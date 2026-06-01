@@ -7,6 +7,7 @@ from itertools import product
 
 from Classes.Base import Config
 from Classes.Case.OsemosysClass import Osemosys
+from Classes.Case.HelpersClass import Helpers
 from Classes.Base.FileClass import File
 from Classes.Base.CustomThreadClass import CustomThread
 class DataFile(Osemosys):
@@ -898,7 +899,11 @@ class DataFile(Osemosys):
             if os.path.exists(csvPath):
                 shutil.rmtree(csvPath)
 
-            for group, array in self.VARIABLES.items():
+            # Iterate over variables ∪ indicators so cleanup also touches any
+            # indicator-group view files. With empty IND_GROUPED this is a no-op
+            # and equivalent to iterating VARIABLES alone.
+            merged = Helpers.merge_groups(self.VARIABLES, self.IND_GROUPED)
+            for group, array in merged.items():
                 #if group != 'RYS':
                 path = Path(self.viewFolderPath, group+'.json')
                 if path.is_file():
@@ -928,7 +933,11 @@ class DataFile(Osemosys):
                 File.writeFile(self.resData, self.resDataPath)
 
             #delete from view folder
-            for group, array in self.VARIABLES.items():
+            # Iterate over variables ∪ indicators so cleanup also touches any
+            # indicator-group view files. With empty IND_GROUPED this is a
+            # no-op and equivalent to iterating VARIABLES alone.
+            merged = Helpers.merge_groups(self.VARIABLES, self.IND_GROUPED)
+            for group, array in merged.items():
                 #if group != 'RYS':
                 path = Path(self.viewFolderPath, group+'.json')
                 if path.is_file():
@@ -938,7 +947,7 @@ class DataFile(Osemosys):
                             if caserunname in jsonFile[obj['id']]:
                                 del jsonFile[obj['id']][caserunname]
                     File.writeFile(jsonFile, path)
-                    
+
             response = {
                 "message": "You have deleted a case run!",
                 "status_code": "success"
@@ -2529,13 +2538,11 @@ class DataFile(Osemosys):
             #CSV
             csvs = [f.name for f in os.scandir(csvFolderPath) ]
 
-            paramByName = {}
-            for group, array in self.VARIABLES.items():
-                for obj in array:
-                    o = {}
-                    o['id'] = obj['id']
-                    o['group'] = group
-                    paramByName[obj['name']] = o
+            # Compose the by-name lookup from Variables ∪ Duals ∪ Indicators.
+            # Each entry carries 'id', 'group', and (now) 'setrelation' — the
+            # downstream group-handler branches below only read 'id' and
+            # 'group', so the extra key is harmless.
+            paramByName = { **self.VAR_BY_NAME, **self.DUALS_BY_NAME, **self.IND_BY_NAME }
 
             DATA = {}
             for csv in csvs:
