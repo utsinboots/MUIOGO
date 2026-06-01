@@ -2447,6 +2447,64 @@ class DataFile(Osemosys):
                         df_prod = df_prod[df_prod['ProductionByTechnologyByMode']!=0]
                         df_prod.to_csv(os.path.join(base_folder, 'csv', 'ProductionByTechnologyByMode.csv'), index=None)
 
+                        ########################################################INDICATOR#####################################################
+                        # IND_CommodityIntensity per technology, optionally filtered by user-supplied tech list.
+                        # Inherited from MUIO 5.6. Dead today (IND_BY_NAME is empty until real indicator
+                        # data flows through Indicators.json) — the loop body is a no-op then. The try/except
+                        # mirrors upstream so a malformed indicator never breaks the rest of CSV generation.
+                        try:
+                            for indId, indObj in self.IND_BY_NAME.items():
+                                technology_list = indObj.get("Techs", [])
+                                indicatorId = indObj.get("id", "UnknownIndicator")
+
+                                dfP = df_prod.copy()
+                                dfA = all_params['TotalAnnualTechnologyActivityByMode'].rename(
+                                    columns={'value': 'TotalAnnualTechnologyActivityByMode'}
+                                )
+
+                                if technology_list:
+                                    dfP = dfP[dfP['t'].isin(technology_list)].copy()
+                                    dfA = dfA[dfA['t'].isin(technology_list)].copy()
+
+                                if dfP.empty or dfA.empty:
+                                    df_empty = pd.DataFrame(columns=['r','y','t','TotalProduction','TotalActivity', indicatorId])
+                                    df_empty.to_csv(os.path.join(base_folder, 'csv', f'{indicatorId}.csv'), index=False)
+                                else:
+                                    dfP["ProductionByTechnologyByMode"] = pd.to_numeric(
+                                        dfP["ProductionByTechnologyByMode"], errors='coerce'
+                                    ).fillna(0)
+                                    dfA["TotalAnnualTechnologyActivityByMode"] = pd.to_numeric(
+                                        dfA["TotalAnnualTechnologyActivityByMode"], errors='coerce'
+                                    ).fillna(0)
+
+                                    df_prod_ann = (
+                                        dfP.groupby(['r', 'y', 'f'], as_index=False)
+                                        ['ProductionByTechnologyByMode']
+                                        .sum()
+                                        .rename(columns={'ProductionByTechnologyByMode': 'TotalProduction'})
+                                    )
+                                    df_act_ann = (
+                                        dfA.groupby(['r', 'y'], as_index=False)
+                                        ['TotalAnnualTechnologyActivityByMode']
+                                        .sum()
+                                        .rename(columns={'TotalAnnualTechnologyActivityByMode': 'TotalActivity'})
+                                    )
+
+                                    df_int = pd.merge(df_prod_ann, df_act_ann, on=['r','y'], how='inner')
+                                    df_int["TotalProduction"] = pd.to_numeric(df_int["TotalProduction"], errors='coerce').fillna(0.0)
+                                    df_int["TotalActivity"]   = pd.to_numeric(df_int["TotalActivity"],   errors='coerce').fillna(0.0)
+
+                                    df_int[indicatorId] = 0.0
+                                    mask = df_int["TotalActivity"] != 0
+                                    df_int.loc[mask, indicatorId] = (
+                                        df_int.loc[mask, "TotalProduction"] / df_int.loc[mask, "TotalActivity"]
+                                    )
+                                    df_int[indicatorId] = df_int[indicatorId].astype(float).round(4)
+                                    df_int = df_int.sort_values(['r','f','y'])
+                                    df_int.to_csv(os.path.join(base_folder, 'csv', f'{indicatorId}.csv'), index=False)
+                        except Exception as e:
+                            print("Indicator (technology intensity) calculation error:", e)
+
                         ########################################RateOfProductionByTechnologyByMode############################################
                         df_ropbt = pd.merge(df_out_ys, df_activity, how='left', on=['t','m','l','y'])
                         region = [x for x in list(df_ropbt.r.unique()) if str(x) != 'nan']
