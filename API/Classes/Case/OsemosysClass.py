@@ -22,8 +22,9 @@ class Osemosys():
         self.INDICATORS = self._safe_read_param_file(self.storagePath / 'Indicators.json')
         self.genData =  File.readFile(self.casePath / 'genData.json')
         # Pre-v5.6 cases never had osy-indicators; guard so opening them does
-        # not KeyError. New cases get [] when no indicators are configured.
-        self.customIndicators = self.genData.get('osy-indicators', [])
+        # not KeyError. `or []` also normalizes the "key present but null"
+        # case so downstream iterations are safe.
+        self.customIndicators = self.genData.get('osy-indicators') or []
         self.resData = File.readFile(self.casePath / 'view' / 'resData.json')
 
         #Case.__init__(self, case)

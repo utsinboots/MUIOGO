@@ -16,12 +16,14 @@ class Helpers:
         # '')` form had: silently coercing 0/False to '' and crashing on True.
         # For real data (strings / None from JSON) this is equivalent to the
         # MUIOGO inline form; for edge cases it stays closer to upstream MUIO's
-        # behavior for non-None values.
+        # behavior for non-None values. Missing 'value' key still raises
+        # KeyError to match both MUIOGO inline and MUIO upstream — data
+        # corruption should surface, not be silently masked.
         d = {}
         for k, lst in parameters.items():
             tmp = {}
             for de in lst:
-                value = de.get('value')
+                value = de['value']
                 tmp[de['id']] = ('' if value is None else str(value)).replace(' ', '')
             d[k] = tmp
         return d
