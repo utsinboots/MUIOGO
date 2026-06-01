@@ -10,11 +10,16 @@ class Helpers:
 
     @staticmethod
     def build_param(parameters: dict) -> dict[str, dict[str, str]]:
+        # MUIOGO note: guards against a None value entry, preserving the fix
+        # from commit ebf060e8. Upstream's `str(None)` yields the literal
+        # "None" which then becomes a parameter string the solver mis-parses
+        # when a user clears a field in the UI.
         d = {}
         for k, lst in parameters.items():
             tmp = {}
             for de in lst:
-                tmp[de['id']] = str(de['value']).replace(" ", "")
+                value = de.get('value')
+                tmp[de['id']] = ('' if value is None else str(value)).replace(' ', '')
             d[k] = tmp
         return d
 
