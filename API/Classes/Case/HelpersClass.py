@@ -10,16 +10,17 @@ class Helpers:
 
     @staticmethod
     def build_param(parameters: dict) -> dict[str, dict[str, str]]:
-        # MUIOGO note: guards against a None value entry, preserving the fix
-        # from commit ebf060e8. Upstream's `str(None)` yields the literal
-        # "None" which then becomes a parameter string the solver mis-parses
-        # when a user clears a field in the UI.
+        # MUIOGO note: preserves the None-guard fix from commit ebf060e8.
+        # Without it, upstream's `str(de['value'])` turns a cleared UI field
+        # (value=None) into the literal string "None", which the solver then
+        # mis-parses. Behavior here matches MUIOGO's prior inline form
+        # `(de['value'] or "").replace(" ", "")` exactly so the helper is a
+        # drop-in for the inline code being removed in #460.
         d = {}
         for k, lst in parameters.items():
             tmp = {}
             for de in lst:
-                value = de.get('value')
-                tmp[de['id']] = ('' if value is None else str(value)).replace(' ', '')
+                tmp[de['id']] = (de['value'] or '').replace(' ', '')
             d[k] = tmp
         return d
 

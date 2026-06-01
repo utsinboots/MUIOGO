@@ -4,6 +4,7 @@ import platform
 import shutil
 from Classes.Base import Config
 from Classes.Base.FileClass import File
+from Classes.Case.HelpersClass import Helpers
 
 class Osemosys():
     def __init__(self, case):
@@ -67,19 +68,9 @@ class Osemosys():
         # self.resCBCPath = Path('..', '..', '..', '..', 'WebAPP', 'DataStorage', case, 'res')
         # self.resPath = Path('..', '..', '..', '..', 'WebAPP', 'DataStorage', case, 'res', 'csv')
 
-        d = {}
-        for k, l in self.PARAMETERS.items():
-            tmp = {}
-            for de in l:
-                tmp[de['id']] = (de['value'] or "").replace(" ", "")
-            d[k] = tmp
-        self.PARAM = d
-
-        a=[]
-        for k, l in self.VARIABLES.items():
-            for de in l:
-                a.append(de['name'])
-        self.VARS = a
+        self.PARAM = Helpers.build_param(self.PARAMETERS)
+        self.VARS = Helpers.build_vars(self.VARIABLES)
+        self.VAR_BY_NAME = Helpers.build_var_by_name(self.VARIABLES)
 
     @property
     def glpkFolder(self):
