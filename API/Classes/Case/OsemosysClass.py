@@ -15,7 +15,15 @@ class Osemosys():
 
         self.PARAMETERS = File.readParamFile(self.storagePath / 'Parameters.json')
         self.VARIABLES = File.readParamFile(self.storagePath / 'Variables.json')
+        # Stub files committed in #458 because upstream MUIO 5.6 reads them but
+        # forgot to commit them. The safe-read keeps us alive if a deploy is
+        # missing the stub for any reason (e.g. a user wiped DataStorage).
+        self.DUALS = self._safe_read_param_file(self.storagePath / 'Duals.json')
+        self.INDICATORS = self._safe_read_param_file(self.storagePath / 'Indicators.json')
         self.genData =  File.readFile(self.casePath / 'genData.json')
+        # Pre-v5.6 cases never had osy-indicators; guard so opening them does
+        # not KeyError. New cases get [] when no indicators are configured.
+        self.customIndicators = self.genData.get('osy-indicators', [])
         self.resData = File.readFile(self.casePath / 'view' / 'resData.json')
 
         #Case.__init__(self, case)
@@ -71,6 +79,14 @@ class Osemosys():
         self.PARAM = Helpers.build_param(self.PARAMETERS)
         self.VARS = Helpers.build_vars(self.VARIABLES)
         self.VAR_BY_NAME = Helpers.build_var_by_name(self.VARIABLES)
+        # Indicator and dual derived state. Empty until upstream commits real
+        # Indicators.json / Duals.json content; harmless no-ops in the
+        # meantime. Wired here so future indicator-pipeline consumers don't
+        # have to re-derive.
+        tech_map = self.getTechsMap()
+        self.IND_BY_NAME = Helpers.merge_all_indicators(self.INDICATORS, self.customIndicators, tech_map)
+        self.IND_GROUPED = Helpers.merge_all_indicators_grouped(self.INDICATORS, self.customIndicators, tech_map)
+        self.DUALS_BY_NAME = Helpers.build_var_by_name(self.DUALS)
 
     @property
     def glpkFolder(self):
@@ -102,6 +118,17 @@ class Osemosys():
     def cbc_is_bundled(self):
         _ = self.cbcFolder
         return bool(self._cbc_is_bundled)
+
+    @staticmethod
+    def _safe_read_param_file(path: Path) -> dict:
+        """Read a param JSON file, returning {} when the file is missing or
+        unreadable. Used for Duals.json / Indicators.json which MUIO 5.6 reads
+        but upstream forgot to commit. We ship empty stubs but should still
+        survive if those go missing on a given deploy."""
+        try:
+            return File.readParamFile(path)
+        except (FileNotFoundError, IOError, OSError):
+            return {}
 
     @staticmethod
     def _solver_binary_names(binary_name: str):
