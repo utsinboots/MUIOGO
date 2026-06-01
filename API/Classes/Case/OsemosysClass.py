@@ -49,6 +49,8 @@ class Osemosys():
         self.osemosysFileOriginal = Path(Config.SOLVERs_FOLDER,'osemosys.txt')
         self._glpkFolder = None
         self._cbcFolder = None
+        self._glpsol_is_bundled = None
+        self._cbc_is_bundled = None
 
         self.resultsPath = Path(Config.DATA_STORAGE,case,'res')
         self.viewFolderPath = Path(Config.DATA_STORAGE,case,'view')
@@ -80,7 +82,7 @@ class Osemosys():
     @property
     def glpkFolder(self):
         if self._glpkFolder is None:
-            self._glpkFolder = self._resolve_solver_folder(
+            self._glpkFolder, self._glpsol_is_bundled = self._resolve_solver_folder(
                 env_var="SOLVER_GLPK_PATH",
                 binary_name="glpsol",
                 bundled_path=Path(Config.SOLVERs_FOLDER, "GLPK"),
@@ -90,12 +92,23 @@ class Osemosys():
     @property
     def cbcFolder(self):
         if self._cbcFolder is None:
-            self._cbcFolder = self._resolve_solver_folder(
+            self._cbcFolder, self._cbc_is_bundled = self._resolve_solver_folder(
                 env_var="SOLVER_CBC_PATH",
                 binary_name="cbc",
                 bundled_path=Path(Config.SOLVERs_FOLDER, "COIN-OR"),
             )
         return self._cbcFolder
+
+    @property
+    def glpsol_is_bundled(self):
+        # Trigger lazy resolution so _glpsol_is_bundled gets set.
+        _ = self.glpkFolder
+        return bool(self._glpsol_is_bundled)
+
+    @property
+    def cbc_is_bundled(self):
+        _ = self.cbcFolder
+        return bool(self._cbc_is_bundled)
 
     @staticmethod
     def _solver_binary_names(binary_name: str):
@@ -129,12 +142,21 @@ class Osemosys():
         return None
 
     @staticmethod
-    def _resolve_solver_folder(env_var: str, binary_name: str, bundled_path: Path) -> Path:
-        """Resolve a solver binary folder using a three-tier priority chain:
+    def _resolve_solver_folder(env_var: str, binary_name: str, bundled_path: Path):
+        """Resolve a solver binary folder using a four-tier priority chain.
 
-        1. Environment variable (e.g. SOLVER_GLPK_PATH)
-        2. System PATH via shutil.which
-        3. Bundled binary folder inside SOLVERs_FOLDER
+        Tiers:
+          1. Environment variable (e.g. SOLVER_GLPK_PATH) — set by setup script.
+          2. System PATH via shutil.which.
+          3. Standard install locations per platform (MUIO 5.6 inheritance):
+             macOS: /opt/homebrew/bin, /usr/local/bin, /usr/bin
+             Linux: /usr/bin, /usr/local/bin, /bin, /snap/bin
+          4. Bundled binary folder inside SOLVERs_FOLDER.
+
+        Returns (folder, is_bundled) — is_bundled is True only when the binary
+        was found in the bundled SOLVERs_FOLDER (tier 4). Used by DataFileClass.run
+        to decide whether the subprocess cwd should be the solver folder
+        (bundled, so adjacent DLLs resolve) or None (system install).
 
         Raises RuntimeError when resolution is attempted and no solver can be
         located, instead of silently storing a wrong path and failing mid-run.
@@ -144,7 +166,7 @@ class Osemosys():
             env_path = Path(env_val).expanduser()
             env_binary = Osemosys._find_solver_binary(env_path, binary_name, recursive=False)
             if env_binary is not None:
-                return env_binary.resolve().parent
+                return env_binary.resolve().parent, False
 
             raise RuntimeError(
                 f"{env_var} is set to '{env_val}', but no '{binary_name}' binary was found there.\n"
@@ -154,11 +176,24 @@ class Osemosys():
         for solver_name in Osemosys._solver_binary_names(binary_name):
             which = shutil.which(solver_name)
             if which:
-                return Path(which).resolve().parent
+                return Path(which).resolve().parent, False
+
+        system = platform.system()
+        if system == "Darwin":
+            standard_paths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+        elif system == "Linux":
+            standard_paths = ["/usr/bin", "/usr/local/bin", "/bin", "/snap/bin"]
+        else:
+            standard_paths = []
+
+        for p in standard_paths:
+            candidate = Osemosys._find_solver_binary(Path(p), binary_name, recursive=False)
+            if candidate is not None:
+                return candidate.resolve().parent, False
 
         bundled_binary = Osemosys._find_solver_binary(bundled_path, binary_name, recursive=True)
         if bundled_binary is not None:
-            return bundled_binary.resolve().parent
+            return bundled_binary.resolve().parent, True
 
         raise RuntimeError(
             f"Solver binary '{binary_name}' could not be found.\n"

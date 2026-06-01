@@ -2100,6 +2100,12 @@ class DataFile(Osemosys):
 
             glpfolder = self.glpkFolder.resolve()
             cbcfolder = self.cbcFolder.resolve()
+            # Only set cwd to the solver folder when the solver is bundled (DLLs
+            # live next to the exe). For system installs, leave cwd as None so
+            # the subprocess inherits the caller's cwd rather than running from
+            # /usr/bin or similar. Inheritance from MUIO 5.6.
+            glpk_cwd = glpfolder if self.glpsol_is_bundled else None
+            cbc_cwd = cbcfolder if self.cbc_is_bundled else None
             glpsol_exec = Osemosys._find_solver_binary(glpfolder, "glpsol", recursive=False)
             if glpsol_exec is None:
                 raise RuntimeError(
@@ -2114,7 +2120,7 @@ class DataFile(Osemosys):
             if solver == 'glpk':
                 glpk_out = subprocess.run(
                     [str(glpsol_exec), "-m", modelfile, "-d", datafile, "-o", resultfile],
-                    cwd=glpfolder,
+                    cwd=glpk_cwd,
                     capture_output=True,
                     text=True,
                 )
@@ -2138,7 +2144,7 @@ class DataFile(Osemosys):
                 #return output to variable preprocessed data file
                 glpk_out = subprocess.run(
                     [str(glpsol_exec), "--check", "-m", modelfile, "-d", datafile_processed, "--wlp", lpfile],
-                    cwd=glpfolder,
+                    cwd=glpk_cwd,
                     capture_output=True,
                     text=True,
                 )
@@ -2168,7 +2174,7 @@ class DataFile(Osemosys):
                 # prin
                 cbc_out = subprocess.run(
                     [str(cbc_exec), lpfile, "solve", "-printing", "all", "-solu", resultfile],
-                    cwd=cbcfolder,
+                    cwd=cbc_cwd,
                     capture_output=True,
                     text=True,
                 )
