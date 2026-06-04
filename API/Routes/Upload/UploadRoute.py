@@ -21,6 +21,29 @@ def allowed_filename(filename):
 def allowed_filename_xls(filename):
     return '.' in filename and filename.rsplit('.',1)[1] in Config.ALLOWED_EXTENSIONS_XLS
 
+# Legacy case-backup arcname prefix. Backups created before PR #331 stored entries as
+# 'WebAPP/DataStorage/<case>/<rel>'; backups since #331 store '<case>/<rel>'. We accept
+# both formats on restore so users can still upload older archives.
+_LEGACY_CASE_PREFIX = "WebAPP/DataStorage/"
+
+def _extract_case_zip(zf, dest_dir):
+    """Extract a case backup ZIP under dest_dir, handling both legacy and current arcname
+    layouts. Each entry is rewritten to be case-rooted ('<case>/<rel>') and validated
+    against path traversal before writing.
+    """
+    for zi in zf.infolist():
+        if zi.is_dir():
+            continue
+        name = zi.filename.lstrip('/')
+        if name.startswith(_LEGACY_CASE_PREFIX):
+            name = name[len(_LEGACY_CASE_PREFIX):]
+        if not name:
+            continue
+        target = Config.validate_path(dest_dir, name)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with zf.open(zi) as src, open(target, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+
 def download_dir(prefix, local, bucket, client):
     """
     params:
@@ -328,7 +351,7 @@ def uploadCaseUnchunked_old():
                                 name = data.get('osy-version', None)
 
                                 if name == '1.0' or name == '2.0':
-                                    zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                                    _extract_case_zip(zf, Config.DATA_STORAGE)
 
                                     #add res view folders with json default files
                                     configPath = Path(Config.DATA_STORAGE, 'Variables.json')
@@ -375,7 +398,7 @@ def uploadCaseUnchunked_old():
                                 elif name == '3.0': 
                                     #potrebno dodati tech groups
                                     #case = data.get('osy-casename', None)
-                                    zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                                    _extract_case_zip(zf, Config.DATA_STORAGE)
                                     genDataPath = Path(Config.DATA_STORAGE, casename, 'genData.json')
                                     genData = File.readParamFile(genDataPath)
                                     genData["osy-techGroups"] = []
@@ -394,7 +417,7 @@ def uploadCaseUnchunked_old():
                                         "casename": casename
                                     })
                                 elif name == '4.0' or name == '4.5' or name == '4.9': 
-                                    zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                                    _extract_case_zip(zf, Config.DATA_STORAGE)
                                     # potrebno updatevoati YearSplit u verziji 5.0 su dinamicki
                                     #update for dynamic timeslicec
                                     updateTimeslices(casename)
@@ -410,7 +433,7 @@ def uploadCaseUnchunked_old():
                                     })
 
                                 # elif name == '4.9': 
-                                #     zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                                #     _extract_case_zip(zf, Config.DATA_STORAGE)
                                 #     # potrebno updatevoati YearSplit u verziji 5.0 su dinamicki
                                 #     #update for dynamic timeslicec
                                 #     updateTimeslices(casename)
@@ -422,7 +445,7 @@ def uploadCaseUnchunked_old():
                                 #         })
 
                                 elif name == '5.0': 
-                                    zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                                    _extract_case_zip(zf, Config.DATA_STORAGE)
                                     updateViewDefintions(casename)
                                     msg.append({
                                         "message": "Model " + casename +" have been uploaded!",
@@ -508,7 +531,7 @@ def handle_full_zip(file, filepath=None):
                     #     TVOJA ORIGINALNA LOGIKA
                     # ---------------------------
                     if name == '1.0' or name == '2.0':
-                        zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                        _extract_case_zip(zf, Config.DATA_STORAGE)
 
                         ##dio za update ViewDefintions
                         #configPath = Path(Config.DATA_STORAGE, 'Variables.json')
@@ -552,7 +575,7 @@ def handle_full_zip(file, filepath=None):
                             "casename": casename
                         })
                     elif name == '3.0':
-                        zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                        _extract_case_zip(zf, Config.DATA_STORAGE)
                         genDataPath = Path(Config.DATA_STORAGE, casename, 'genData.json')
                         genData = File.readParamFile(genDataPath)
                         genData["osy-techGroups"] = []
@@ -570,7 +593,7 @@ def handle_full_zip(file, filepath=None):
                             "casename": casename
                         })
                     elif name in ['4.0', '4.5', '4.9']:
-                        zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                        _extract_case_zip(zf, Config.DATA_STORAGE)
                         genDataPath = Path(Config.DATA_STORAGE, casename, 'genData.json')
                         genData = File.readParamFile(genDataPath)
                         updateTimeslices(casename)
@@ -584,7 +607,7 @@ def handle_full_zip(file, filepath=None):
                             "casename": casename
                         })
                     elif name == '5.0':
-                        zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                        _extract_case_zip(zf, Config.DATA_STORAGE)
                         genDataPath = Path(Config.DATA_STORAGE, casename, 'genData.json')
                         genData = File.readParamFile(genDataPath)
                         updateGenData(casename, genData)
@@ -596,7 +619,7 @@ def handle_full_zip(file, filepath=None):
                             "casename": casename
                         })
                     elif name == '5.6':
-                        zf.extractall(os.path.join(Config.EXTRACT_FOLDER))
+                        _extract_case_zip(zf, Config.DATA_STORAGE)
                         genDataPath = Path(Config.DATA_STORAGE, casename, 'genData.json')
                         genData = File.readParamFile(genDataPath)
                         updateViewDefintions(casename, genData)
