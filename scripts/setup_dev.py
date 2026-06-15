@@ -1275,9 +1275,9 @@ def main() -> int:
         help="Skip interactive confirmation prompts (required for non-interactive force reinstall).",
     )
     parser.add_argument(
-    "--platform-only",
-    action="store_true",
-    help="Skip Python venv/dependency setup and run only platform setup steps after uv sync.",
+        "--platform-only",
+        action="store_true",
+        help="Skip Python venv/dependency setup and run only platform setup steps after uv sync.",
     )
     parser.set_defaults(with_demo_data=True)
     args = parser.parse_args()
