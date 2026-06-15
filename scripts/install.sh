@@ -129,7 +129,7 @@ prompt_yn() {
     while true; do
         read -rp "$prompt $opts " ans
         [[ -z "$ans" ]] && ans="$default"
-        case "${ans,,}" in
+        case "$(echo "$ans" | tr '[:upper:]' '[:lower:]')" in
             y|yes)      return 0 ;;
             n|no)       return 1 ;;
             q|quit)     echo -e "${YELLOW}Aborted by user.${RESET}"; exit 130 ;;
