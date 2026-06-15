@@ -33,7 +33,7 @@ set -euo pipefail
 REPO_URL="https://github.com/utsinboots/MUIOGO.git"
 REPO_NAME="MUIOGO"
 DEST=""
-BRANCH=""
+BRANCH="feature/472-uv-installer"
 YES=0
 NO_DEMO_DATA=0
 SKIP_UV_INSTALL=0

@@ -62,6 +62,7 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = (Get-Location).Path
 
 if ($RepoUrl -eq "") { $RepoUrl = "https://github.com/utsinboots/MUIOGO.git" }
+if ($Branch -eq "") { $Branch = "feature/472-uv-installer" }
 $RepoName = "MUIOGO"
 
 # -- Colors --------------------------------------------------------------------
