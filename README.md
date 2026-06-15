@@ -68,7 +68,7 @@ For setup options, use the "--help" flag:
 
 The demo dataset (`CLEWs.Demo.zip`) is hosted as a [GitHub release asset](https://github.com/EAPD-DRB/MUIOGO/releases/tag/demo-data) and downloaded automatically during setup when not already cached locally.
 
-- SHA-256: `facf4bda703f67b3c8b8697fea19d7d49be72bc2029fc05a68c61fd12ba7edde`
+- SHA-256: `db92d380b0448f767c4ba56eea5c79b14bcae8fbf8e05a6a0d92d5345bb742c1`
 
 Setup installs demo data by default. The archive is downloaded once, cached in `assets/demo-data/`, and reused on subsequent runs.
 

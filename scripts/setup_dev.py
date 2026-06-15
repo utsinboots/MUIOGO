@@ -52,7 +52,7 @@ MIN_PYTHON = (3, 10)
 MAX_PYTHON = (3, 13)  # exclusive
 DATA_STORAGE_DIR = PROJECT_ROOT / "WebAPP" / "DataStorage"
 DEMO_DATA_ARCHIVE = PROJECT_ROOT / "assets" / "demo-data" / "CLEWs.Demo.zip"
-DEMO_DATA_ARCHIVE_SHA256 = "facf4bda703f67b3c8b8697fea19d7d49be72bc2029fc05a68c61fd12ba7edde"
+DEMO_DATA_ARCHIVE_SHA256 = "db92d380b0448f767c4ba56eea5c79b14bcae8fbf8e05a6a0d92d5345bb742c1"
 DEMO_DATA_ARCHIVE_URL = (
     "https://github.com/EAPD-DRB/MUIOGO/releases/download/demo-data/CLEWs.Demo.zip"
 )
@@ -449,6 +449,16 @@ def install_demo_data(force: bool, yes: bool) -> bool:
     if demo_data_present() and not force:
         _print_pass("Demo data already installed", str(DEMO_DATA_REQUIRED_DIRS[0]))
         return True
+
+    # Self-heal a stale cache: if the cached archive exists but no longer matches
+    # the pinned hash (e.g. the release asset was recompressed/updated), drop it so
+    # the download path below re-fetches the current one. Without this a stale
+    # assets/demo-data/CLEWs.Demo.zip makes the checksum verification further down
+    # fail hard instead of recovering -- notably on --force-demo-data, which clears
+    # the extracted dirs but not the cached archive.
+    if DEMO_DATA_ARCHIVE.exists() and _sha256(DEMO_DATA_ARCHIVE) != DEMO_DATA_ARCHIVE_SHA256:
+        print("  Cached demo-data archive is stale (hash mismatch); re-downloading ...")
+        DEMO_DATA_ARCHIVE.unlink()
 
     if not DEMO_DATA_ARCHIVE.exists():
         print("  Demo-data archive not found locally; downloading from release asset ...")
