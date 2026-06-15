@@ -1,6 +1,6 @@
 import shutil
 from flask import Blueprint, request, jsonify, send_file, after_this_request
-from zipfile import ZipFile
+from zipfile import ZipFile, ZIP_DEFLATED
 from pathlib import Path, PurePosixPath
 from werkzeug.utils import secure_filename
 import os, time, json, glob
@@ -281,7 +281,13 @@ def backupCase():
         zippedFile = Path(Config.validate_path(Config.DATA_STORAGE, f"{case}.zip"))
 
         '''File system data storage'''
-        with ZipFile(zippedFile, 'w') as zipObj:
+        # DEFLATE rather than the ZipFile default of ZIP_STORED. Case backups are
+        # JSON/CSV/text (model inputs, solver results, pivot views) which compress
+        # ~15-30x; storing them uncompressed made the demo archive 48 MB and a real
+        # country case ~944 MB. Every standard reader (Python zipfile, unzip, OS
+        # archivers) handles DEFLATE, and the read/extract paths are unchanged, so
+        # existing STORED backups still restore.
+        with ZipFile(zippedFile, 'w', compression=ZIP_DEFLATED) as zipObj:
             # Iterate over all the files in directory
             for folderName, subfolders, filenames in os.walk(str(casePath)):
 
