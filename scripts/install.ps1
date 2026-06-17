@@ -43,7 +43,7 @@
     Unattended install into C:\work\MUIOGO.
 
 .EXAMPLE
-    .\scripts\install.ps1 -RepoUrl https://github.com/YOUR_FORK/MUIOGO.git -Branch feature/472-uv-installer
+    .\scripts\install.ps1 -RepoUrl https://github.com/YOUR_FORK/MUIOGO.git -Branch YOUR_BRANCH
     Test a fork branch before the PR is merged.
 #>
 
@@ -61,8 +61,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ScriptDir = (Get-Location).Path
 
-if ($RepoUrl -eq "") { $RepoUrl = "https://github.com/utsinboots/MUIOGO.git" }
-if ($Branch -eq "") { $Branch = "feature/472-uv-installer" }
+if ($RepoUrl -eq "") { $RepoUrl = "https://github.com/EAPD-DRB/MUIOGO.git" }
 $RepoName = "MUIOGO"
 
 # -- Colors --------------------------------------------------------------------

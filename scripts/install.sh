@@ -25,15 +25,15 @@
 #   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/EAPD-DRB/MUIOGO/main/scripts/install.sh)"
 #
 # Test a fork:
-#   bash install.sh --repo-url https://github.com/YOUR_FORK/MUIOGO.git --branch feature/472-uv-installer
+#   bash install.sh --repo-url https://github.com/YOUR_FORK/MUIOGO.git --branch YOUR_BRANCH
 
 set -euo pipefail
 
 # -- Defaults ------------------------------------------------------------------
-REPO_URL="https://github.com/utsinboots/MUIOGO.git"
+REPO_URL="https://github.com/EAPD-DRB/MUIOGO.git"
 REPO_NAME="MUIOGO"
 DEST=""
-BRANCH="feature/472-uv-installer"
+BRANCH=""
 YES=0
 NO_DEMO_DATA=0
 SKIP_UV_INSTALL=0
