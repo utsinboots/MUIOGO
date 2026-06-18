@@ -870,8 +870,79 @@ def _detect_linux_pkg_manager() -> tuple[str, list[str], list[str]] | None:
     return None
 
 
-def install_solvers() -> bool:
-    """Install GLPK and CBC solver binaries using OS package managers."""
+def _install_homebrew(yes: bool = False) -> tuple[str | None, bool]:
+    """Offer to install Homebrew on macOS.
+
+    Returns ``(brew_path, attempted_and_failed)``:
+      * ``(path, False)`` — Homebrew is installed and available;
+      * ``(None, False)`` — install was declined or skipped (non-fatal);
+      * ``(None, True)``  — install was attempted and failed (fatal).
+
+    Homebrew's official installer is interactive — it asks for confirmation and a
+    sudo password and may trigger an Xcode Command Line Tools install — so we never
+    run it unattended. Under ``--yes`` or a non-interactive shell we point the user
+    at https://brew.sh and skip it (a non-fatal decline).
+    """
+    print(
+        "\n  Homebrew is needed to install the GLPK/CBC solvers and is not present."
+        "\n  (Homebrew is the standard macOS package manager: https://brew.sh)"
+    )
+
+    if yes or not sys.stdin.isatty():
+        reason = "--yes given" if yes else "non-interactive shell"
+        _print_warn(
+            f"Skipping Homebrew install ({reason})",
+            "Install it from https://brew.sh, then re-run -- or: brew install glpk cbc",
+        )
+        return None, False
+
+    try:
+        answer = input("  Install Homebrew now? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = "n"  # treat Ctrl+D / Ctrl+C as "decline"
+    if answer not in ("y", "yes"):
+        _print_warn(
+            "Skipping Homebrew install",
+            "Install it from https://brew.sh, then re-run -- or: brew install glpk cbc",
+        )
+        return None, False
+
+    print(
+        "  Installing Homebrew via the official installer "
+        "(you may be prompted for your password)..."
+    )
+    installer = (
+        '/bin/bash -c "$(curl -fsSL '
+        'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    )
+    if subprocess.run(installer, shell=True).returncode != 0:
+        _print_fail("Homebrew installation failed", "Install it manually from https://brew.sh")
+        return None, True
+
+    # brew is not on this process's PATH yet; add its standard location so the
+    # solver install below can find it in the same run.
+    for candidate in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew"):
+        if Path(candidate).exists():
+            os.environ["PATH"] = (
+                str(Path(candidate).parent) + os.pathsep + os.environ.get("PATH", "")
+            )
+            _print_pass("Homebrew installed", candidate)
+            return candidate, False
+
+    found = _which("brew")
+    if found:
+        _print_pass("Homebrew installed", found)
+        return found, False
+    _print_fail("Homebrew installed but 'brew' not on PATH", "Open a new terminal and re-run.")
+    return None, True
+
+
+def install_solvers(yes: bool = False) -> bool:
+    """Install GLPK and CBC solver binaries using OS package managers.
+
+    On macOS, a missing Homebrew (or a declined install) is a non-fatal warning:
+    MUIOGO still installs and runs -- the solvers are only needed to solve a model.
+    """
     _print_header("Step 3: Solver dependencies (GLPK & CBC)")
 
     glpk_ok = _resolve_solver_binary("glpsol", "SOLVER_GLPK_PATH") is not None
@@ -885,21 +956,20 @@ def install_solvers() -> bool:
 
     # ── macOS (Homebrew) ──────────────────────────────────────────────────
     if SYSTEM == "Darwin":
-        if not _which("brew"):
-            _print_fail(
-                "Homebrew not found",
-                "Install from https://brew.sh then re-run this script.",
-            )
-            success = False
-        else:
+        brew = _which("brew")
+        if brew is None:
+            brew, brew_install_failed = _install_homebrew(yes=yes)
+            if brew_install_failed:
+                success = False
+        if brew is not None:
             if not glpk_ok:
-                r = _run(["brew", "install", "glpk"], capture_output=True, text=True)
+                r = _run([brew, "install", "glpk"], capture_output=True, text=True)
                 if r.returncode != 0:
                     _print_fail("brew install glpk", r.stderr.strip())
                     success = False
 
             if not cbc_ok:
-                r = _run(["brew", "install", "cbc"], capture_output=True, text=True)
+                r = _run([brew, "install", "cbc"], capture_output=True, text=True)
                 if r.returncode != 0:
                     _print_fail("brew install cbc", r.stderr.strip())
                     success = False
@@ -983,16 +1053,14 @@ def install_solvers() -> bool:
     if glpk_exec is not None:
         _print_pass("GLPK (glpsol) available", str(glpk_exec.parent))
     else:
-        _print_fail("GLPK (glpsol) not available")
-        success = False
+        _print_warn("GLPK (glpsol) not installed", "needed only to solve models")
 
     if cbc_exec is not None:
         _print_pass("CBC available", str(cbc_exec.parent))
     else:
-        _print_fail("CBC not available")
-        success = False
+        _print_warn("CBC not installed", "needed only to solve models")
 
-    if success:
+    if glpk_exec is not None and cbc_exec is not None:
         print(f"\n  {GREEN}Solver dependencies installed.{RESET}")
     else:
         _print_solver_manual_instructions()
@@ -1097,8 +1165,7 @@ def run_checks() -> bool:
             glpsol_exec = _find_solver_binary_on_path("glpsol")
 
         if glpsol_exec is None:
-            _print_fail("GLPK (glpsol)", "not found via SOLVER_GLPK_PATH or PATH")
-            all_ok = False
+            _print_warn("GLPK (glpsol) not installed", "needed only to solve models")
         else:
             try:
                 r = subprocess.run(
@@ -1128,8 +1195,7 @@ def run_checks() -> bool:
             cbc_exec = _find_solver_binary_on_path("cbc")
 
         if cbc_exec is None:
-            _print_fail("CBC", "not found via SOLVER_CBC_PATH or PATH")
-            all_ok = False
+            _print_warn("CBC not installed", "needed only to solve models")
         else:
             try:
                 r = subprocess.run(
@@ -1190,19 +1256,23 @@ def _print_summary(results: dict[str, tuple[bool, str]]) -> None:
     _print_header("Setup Summary")
 
     all_ok = all(passed for passed, _ in results.values())
+    has_warning = any(
+        detail.lower().startswith("warning") for _, detail in results.values()
+    )
 
     for step, (passed, detail) in results.items():
         if detail.lower().startswith("skipped"):
             _print_skipped(step, detail)
-            continue
-        if passed:
+        elif detail.lower().startswith("warning"):
+            _print_warn(step, detail.split(":", 1)[1].strip() if ":" in detail else detail)
+        elif passed:
             _print_pass(step, detail)
         else:
             _print_fail(step, detail)
 
     print()
 
-    if all_ok:
+    if all_ok and not has_warning:
         start_cmd = r'scripts\start.bat' if SYSTEM == "Windows" else "./scripts/start.sh"
         run_cmd = f'"{_venv_python()}" "{PROJECT_ROOT / "API" / "app.py"}"'
         print(textwrap.dedent(f"""\
@@ -1214,6 +1284,16 @@ def _print_summary(results: dict[str, tuple[bool, str]]) -> None:
           2. Stop the app with CTRL+C in the terminal.
           3. Advanced/manual start (without launcher):
                {run_cmd}
+        """))
+    elif all_ok:
+        start_cmd = r'scripts\start.bat' if SYSTEM == "Windows" else "./scripts/start.sh"
+        print(textwrap.dedent(f"""\
+        {GREEN}{BOLD}MUIOGO is set up.{RESET} {YELLOW}Some optional components are missing (see warnings above).{RESET}
+
+        You can start the app now:
+               {start_cmd}
+        The GLPK/CBC solvers are only needed to run a model — install them (see the
+        notes above), then re-run with --check when you're ready.
         """))
     else:
         check_cmd = r'scripts\setup.bat --check' if SYSTEM == "Windows" else "./scripts/setup.sh --check"
@@ -1370,7 +1450,17 @@ def main() -> int:
 
     results["App secret key"] = (_ensure_secret_key_in_env(), str(ENV_FILE))
 
-    results["Solver dependencies (GLPK & CBC)"] = (install_solvers(), "")
+    solver_ok = install_solvers(yes=args.yes)
+    if not solver_ok:
+        solver_detail = "see errors above"
+    elif (
+        _resolve_solver_binary("glpsol", "SOLVER_GLPK_PATH") is not None
+        and _resolve_solver_binary("cbc", "SOLVER_CBC_PATH") is not None
+    ):
+        solver_detail = "GLPK & CBC installed"
+    else:
+        solver_detail = "warning: GLPK/CBC not installed (optional — see solver notes above)"
+    results["Solver dependencies (GLPK & CBC)"] = (solver_ok, solver_detail)
 
     demo_detail = ""
     if args.with_demo_data:

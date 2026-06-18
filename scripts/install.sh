@@ -404,6 +404,7 @@ fi
 
 SETUP_ARGS=("scripts/setup_dev.py" "--platform-only" "--venv-dir" ".venv")
 [[ $NO_DEMO_DATA -eq 1 ]] && SETUP_ARGS+=("--no-demo-data")
+[[ $YES -eq 1 ]] && SETUP_ARGS+=("--yes")
 
 cmd "python ${SETUP_ARGS[*]}"
 pushd "$DEST_ABS" >/dev/null

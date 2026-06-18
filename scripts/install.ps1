@@ -425,6 +425,7 @@ if (-not (Test-Path $VenvPython)) {
 
 $SetupArgs = @("scripts\setup_dev.py", "--platform-only", "--venv-dir", ".venv")
 if ($NoDemoData) { $SetupArgs += "--no-demo-data" }
+if ($Yes) { $SetupArgs += "--yes" }
 
 Write-Cmd ("python {0}" -f ($SetupArgs -join ' '))
 Push-Location $DestAbs
