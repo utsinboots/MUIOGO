@@ -47,6 +47,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 VENV_DIR = (Path.home() / ".venvs" / "muiogo").resolve()
 REQUIREMENTS = PROJECT_ROOT / "requirements.txt"
 ENV_FILE = PROJECT_ROOT / ".env"
+# Where a prebuilt CBC (cbcbox) is copied so it survives 'uv sync', which prunes
+# anything not in uv.lock from the project .venv. Overridable for tests.
+CBC_PREBUILT_DIR = Path.home() / ".local" / "opt" / "cbc"
 SYSTEM = platform.system()  # 'Darwin', 'Linux', 'Windows'
 MIN_PYTHON = (3, 10)
 MAX_PYTHON = (3, 13)  # exclusive
@@ -937,6 +940,101 @@ def _install_homebrew(yes: bool = False) -> tuple[str | None, bool]:
     return None, True
 
 
+def _cbc_bottle_available(brew: str) -> bool:
+    """Does Homebrew have a prebuilt CBC bottle for THIS Mac (vs build-from-source)?
+
+    Apple Silicon always has CBC bottles, so we answer True without asking. On Intel
+    -- where bottles are rare and brew would otherwise compile for ~6 min -- we ask
+    brew for this machine's own bottle tag (codename-free, so it won't go stale on
+    new macOS) and check whether cbc ships a bottle for it. If brew can't tell us,
+    assume no bottle and let the caller offer the prebuilt cbcbox binary.
+    """
+    if platform.machine() == "arm64":
+        return True
+    env = {**os.environ, "HOMEBREW_NO_AUTO_UPDATE": "1"}
+    try:
+        tag = subprocess.run(
+            [brew, "ruby", "-e", "puts Utils::Bottles.tag.to_s"],
+            capture_output=True, text=True, timeout=30, env=env,
+        )
+        info = subprocess.run(
+            [brew, "info", "--json=v2", "cbc"],
+            capture_output=True, text=True, timeout=60, env=env,
+        )
+        if tag.returncode == 0 and info.returncode == 0 and tag.stdout.strip():
+            my_tag = tag.stdout.strip()
+            files = json.loads(info.stdout)["formulae"][0]["bottle"]["stable"]["files"]
+            return my_tag in files
+    except Exception:
+        pass
+    return False
+
+
+def _install_prebuilt_cbc() -> None:
+    """Install a prebuilt CBC (cbcbox) when Homebrew has no bottle for this Mac.
+
+    Done automatically, like the other solver installs -- it's a fast wheel
+    download, no compiling and no sudo, so there's nothing to prompt about. The
+    binary plus its bundled libraries is COPIED OUT of a throwaway venv to
+    CBC_PREBUILT_DIR and recorded as SOLVER_CBC_PATH; copying out matters because
+    'uv sync' prunes anything not in uv.lock from the project .venv. Non-fatal: any
+    problem just warns and leaves CBC for the manual steps in the summary.
+    """
+    print(
+        "  No prebuilt CBC via Homebrew for this Mac (brew would compile from"
+        "\n  source), so installing a ready-made CBC instead..."
+    )
+    with tempfile.TemporaryDirectory(prefix="muiogo-cbcbox-") as tmp:
+        venv_dir = Path(tmp) / "venv"
+        try:
+            venv.create(venv_dir, with_pip=True)
+        except Exception as exc:
+            _print_warn("Could not create a temporary environment for CBC", str(exc))
+            return
+        tmp_py = venv_dir / "bin" / "python"
+        pip_res = subprocess.run(
+            [str(tmp_py), "-m", "pip", "install", "--quiet", "cbcbox"],
+            capture_output=True, text=True,
+        )
+        if pip_res.returncode != 0:
+            # Most likely no cbcbox wheel for this macOS (the Intel wheel needs
+            # macOS 15+). Non-fatal -- fall through to the manual steps.
+            _print_warn(
+                "Prebuilt CBC isn't available for this macOS",
+                "see the CBC steps in the summary (e.g. brew install cbc).",
+            )
+            return
+        locate = subprocess.run(
+            [str(tmp_py), "-c", "import cbcbox; print(cbcbox.cbc_bin_path())"],
+            capture_output=True, text=True,
+        )
+        cbc_file = locate.stdout.strip()
+        if locate.returncode != 0 or not cbc_file or not Path(cbc_file).is_file():
+            _print_warn("Prebuilt CBC install produced no binary",
+                        (locate.stderr or "").strip())
+            return
+        # cbc loads its libraries via @rpath = @loader_path/../lib: it lives at
+        # <dist>/bin/cbc and needs <dist>/lib next to it. Copy the WHOLE dist out of
+        # the throwaway venv (copying bin/ alone breaks the binary), then point
+        # SOLVER_CBC_PATH at the copied bin/ where cbc itself is.
+        dist_dir = Path(cbc_file).parent.parent
+        try:
+            shutil.copytree(dist_dir, CBC_PREBUILT_DIR, dirs_exist_ok=True)
+        except Exception as exc:
+            _print_warn("Could not copy CBC into place", str(exc))
+            return
+
+    cbc_bin_dir = CBC_PREBUILT_DIR / "bin"
+    os.environ["SOLVER_CBC_PATH"] = str(cbc_bin_dir)
+    if _upsert_env_var("SOLVER_CBC_PATH", str(cbc_bin_dir)):
+        _print_pass("Prebuilt CBC installed", str(cbc_bin_dir))
+    else:
+        _print_warn(
+            "Installed CBC but couldn't write SOLVER_CBC_PATH to .env",
+            f"add SOLVER_CBC_PATH={cbc_bin_dir} to .env manually",
+        )
+
+
 def install_solvers(yes: bool = False) -> bool:
     """Install GLPK and CBC solver binaries using OS package managers.
 
@@ -970,12 +1068,17 @@ def install_solvers(yes: bool = False) -> bool:
                     _print_warn("brew install glpk failed", r.stderr.strip())
 
             if not cbc_ok:
-                r = _run([brew, "install", "cbc"], capture_output=True, text=True)
-                if r.returncode != 0:
-                    # Non-fatal. On Intel macOS there's often no prebuilt CBC
-                    # bottle, so brew builds from source and can fail; we warn and
-                    # point the user at the manual install instead of failing.
-                    _print_warn("brew install cbc failed", r.stderr.strip())
+                if _cbc_bottle_available(brew):
+                    # Prebuilt bottle exists (e.g. Apple Silicon) -- fast install.
+                    r = _run([brew, "install", "cbc"], capture_output=True, text=True)
+                    if r.returncode != 0:
+                        _print_warn("brew install cbc failed", r.stderr.strip())
+                else:
+                    # No prebuilt CBC bottle for this Mac (typically Intel): brew
+                    # would compile from source (~6 min, often fails). Skip that and
+                    # just install the prebuilt cbcbox binary (fast, no sudo), like
+                    # the other solver installs.
+                    _install_prebuilt_cbc()
 
     # ── Linux ─────────────────────────────────────────────────────────────
     elif SYSTEM == "Linux":
@@ -1065,8 +1168,9 @@ def install_solvers(yes: bool = False) -> bool:
 
     if glpk_exec is not None and cbc_exec is not None:
         print(f"\n  {GREEN}Solver dependencies installed.{RESET}")
-    else:
-        _print_solver_manual_instructions()
+    # Manual steps for a still-missing solver are printed at the END of the run
+    # (by _print_summary) so they're the last thing the user sees, not buried in
+    # the middle of Step 3.
 
     return success
 
@@ -1099,10 +1203,9 @@ def _print_solver_manual_instructions() -> None:
         if glpk_missing:
             print("  GLPK:  brew install glpk")
         if cbc_missing:
-            print("  CBC:   brew install cbc")
-            if platform.machine() == "x86_64":
-                print("         On Intel Macs Homebrew builds CBC from source (slow and may")
-                print("         fail); or set SOLVER_CBC_PATH in .env to an existing cbc binary.")
+            print("  CBC (COIN-OR):")
+            print("    A prebuilt CBC couldn't be installed automatically for this")
+            print("    macOS. Try:  brew install cbc   (slow on Intel -- builds from source)")
         print()
     else:
         if glpk_missing:
@@ -1296,11 +1399,16 @@ def _print_summary(results: dict[str, tuple[bool, str]]) -> None:
           - Review the [FAIL] items above.
           - Fix the issues and re-run:
                {check_cmd}
-          - If solver install failed, see manual instructions above or run:
+          - If solver install failed, see the manual steps below or run:
                {setup_cmd}
             after installing the solvers manually.
           - For help, see CONTRIBUTING.md or open an issue.
         """))
+
+    # Manual steps for any still-missing solver are printed last (after the
+    # summary table) so they're the final thing on screen. No-op on a clean
+    # install -- the helper early-returns when nothing is missing.
+    _print_solver_manual_instructions()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1452,7 +1560,7 @@ def main() -> int:
         missing = " & ".join(
             name for name, present in (("GLPK", glpk_present), ("CBC", cbc_present)) if not present
         )
-        solver_detail = f"warning: {missing} not installed (optional — see solver notes above)"
+        solver_detail = f"warning: {missing} not installed (optional — see install steps below)"
     results["Solver dependencies (GLPK & CBC)"] = (solver_ok, solver_detail)
 
     demo_detail = ""
