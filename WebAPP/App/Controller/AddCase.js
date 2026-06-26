@@ -419,7 +419,7 @@ export default class AddCase {
             let defaultTechGroup = DefaultObj.defaultTechGroup();
             //tech grid se pravi dinalicki potrebno je updatovati model
             //JSON parse strungify potrebno da iz nekog razloga izbacino elemente uid boundindex...
-            model.techGroups.push(JSON.parse(JSON.stringify(defaultTechGroup[0], ['TechGroupId', 'TechGroup', 'Desc'])));
+            model.techGroups.push(JSON.parse(JSON.stringify(defaultTechGroup[0]))); //copies all fields inside defaultTechGroup[0]
             //model.techs.push(defaultTech[0]);
             //update technames
             model.techGroupNames[defaultTechGroup[0]['TechGroupId']] = defaultTechGroup[0]['TechGroup'];
@@ -463,6 +463,18 @@ export default class AddCase {
             if (column == 'TechGroup') {
                 var techGroupId = $divTechGroup.jqxGrid('getcellvalue', rowBoundIndex, 'TechGroupId');
                 model.techGroupNames[techGroupId] = value;
+            }
+        });
+
+        //Event listener for color picker change in techgroup, find by TechGroupId
+        $('#osy-gridTechGroup').on('change', '.techgroup-color-picker', function () {
+            var techGroupId = $(this).attr('data-techgroupid');
+            var color = $(this).val();
+            var group = model.techGroups.find(function (tg) {
+                return tg.TechGroupId === techGroupId;
+            });
+            if (group) {
+                group.Color = color;
             }
         });
 

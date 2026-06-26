@@ -10,7 +10,7 @@ export class Model {
         let resData = DataModel.RESData(genData, DemandComms);
         let techData = DataModel.getTechData(genData);
         let commData = DataModel.getCommData(genData);
-        
+        let techGroupData = DataModel.getTechGroupData(genData); //for color lookup by techgroup
 
         console.log('resData ', resData)
 
@@ -24,6 +24,18 @@ export class Model {
         let colorLink = [];
         let labelLink = [];
         let selectedTechs = [];
+
+        var DEFAULT_TECHGROUP_COLOR = '#aaaaaa';
+
+        // Returns techgroup color for a technology, fallback to default grey
+        var getTechColor = function (obj) {
+            if (!obj || !obj.TG || obj.TG.length === 0) return DEFAULT_TECHGROUP_COLOR;
+            
+            var group = techGroupData[obj.TG[0]];
+            if (!group) return DEFAULT_TECHGROUP_COLOR;
+            
+            return group.Color || DEFAULT_TECHGROUP_COLOR;
+        };
 
         $.each(resData.Techs, function (id, obj) {
             labelIndex[obj.TechId] = index;
@@ -43,14 +55,14 @@ export class Model {
             }
             else if (techSelect != null){
                 if(techSelect.includes(obj.TechId)){
-                    color.push('#71a06a');
+                    color.push(getTechColor(obj)); //get color from techgroup; was '#71a06a' 
                 }
                 else{
                     color.push('#f0ad4e');
                 }
             }
             else{
-                color.push('#71a06a');
+                color.push(getTechColor(obj)); //get color from techgroup; was '#71a06a'
             }
             selectedTechs.push(obj.TechId);
         });

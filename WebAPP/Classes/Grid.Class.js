@@ -583,6 +583,19 @@ export class Grid {
             return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteTechGroup" data-id=' + row + ' ><i class="fa  fa-times danger"></i>Delete</span>';
         }
 
+        //color cell renderer for techgroup grid
+        var cellsrendererColor = function (row, columnfield, value) {
+            var color = value || '#aaaaaa';
+            var techGroupId = $('#osy-gridTechGroup').jqxGrid('getcellvalue', row, 'TechGroupId');
+            
+                return `<div style="padding:6px; text-align:center;">
+                    <input type="color" value="${color}"
+                        style="width:40px; height:24px; border:none; cursor:pointer; padding:0;"
+                        data-techgroupid="${techGroupId}"
+                        class="techgroup-color-picker">
+                    </div>`;
+        }
+
         $("#osy-gridTechGroup").jqxGrid({
             width: '100%',
             autoheight: true,
@@ -596,12 +609,17 @@ export class Grid {
             sortable:true,
             showsortcolumnbackground: false,
             autoshowcolumnsmenubutton: false,
+
             columns: [
                 // { text: 'TechGroupId', datafield: 'TechGroupId', hidden: true },
                 { text: 'Technology group name', datafield: 'TechGroup', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Description', datafield: 'Desc', width: '70%', align: 'center', cellsalign: 'left', sortable: false, menu:false },
+                { text: 'Description', datafield: 'Desc', width: '55%', align: 'center', cellsalign: 'left', sortable: false, menu:false }, //Description width reduced from 70% to 55% to accommodate Color column
+                { text: 'Color', datafield: 'Color', width: '15%', align: 'center', cellsalign: 'center', cellsrenderer: cellsrendererColor, editable: false, sortable: false, menu:false }, //color picker column - lets modeler assign a display color to each tech group
                 { text: '<span style="padding:10px; width:100%; border:none" id="osy-addTechGroup" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add group</span>', datafield: 'TechGroupId', width: '10%', cellsrenderer: cellsrendererbutton, editable: false,sortable: false, menu:false },
             ]
+
+
+
         });
     }
 

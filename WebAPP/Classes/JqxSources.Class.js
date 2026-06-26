@@ -52,7 +52,8 @@ export class JqxSources {
                 [
                     { name: 'TechGroupId', type: 'string' },
                     { name: 'TechGroup', type: 'string' },
-                    { name: 'Desc', type: 'string' }
+                    { name: 'Desc', type: 'string' },
+                    { name: 'Color', type: 'string' } //datafield for color of tech group
                 ],
         }
         return srcTechGroup;

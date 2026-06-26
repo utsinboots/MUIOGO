@@ -160,13 +160,22 @@ export class DataModel{
         });
         return techNames;
     }
-
+    
     static TechGroupName(genData){
         let techGroupNames = {};
         $.each(genData['osy-techGroups'], function (id, obj) {
-            techGroupNames[obj.TechGroupId] = obj.TechGroup;
+          techGroupNames[obj.TechGroupId] = obj.TechGroup;
         });
         return techGroupNames;
+    }
+
+    // Returns tech groups keyed by TechGroupId for fast lookup in RES Viewer color coding
+    static getTechGroupData(genData){
+        let techGroupData = {};
+        $.each(genData['osy-techGroups'], function (id, obj) {
+            techGroupData[obj.TechGroupId] = obj;
+        });
+        return techGroupData;
     }
 
     /////////////////////////////////////////////////

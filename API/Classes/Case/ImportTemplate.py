@@ -121,6 +121,7 @@ class ImportTemplate():
                 "TechGroup": name,
                 "TechGroupId":id,
                 "Desc": desc,
+                "Color": "#aaaaaa"  #default color for new techgroup is grey
             }
         ]
         return defaultObj

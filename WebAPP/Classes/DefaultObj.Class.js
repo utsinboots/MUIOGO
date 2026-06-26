@@ -116,6 +116,7 @@ export class DefaultObj{
                 "TechGroup": id,
                 "TechGroupId":id,
                 "Desc": "Default technology group",
+                "Color": "#aaaaaa" //default color for new techgroup is grey
             }
         ];
         return defaultObj;
