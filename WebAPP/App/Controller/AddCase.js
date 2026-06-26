@@ -478,6 +478,54 @@ export default class AddCase {
             }
         });
 
+        // Snapshot of colors at model load time — used by ⟲ reset to restore original colors
+        var techGroupColorSnapshot = {};
+        model.techGroups.forEach(function (tg) {
+            techGroupColorSnapshot[tg.TechGroupId] = tg.Color || '#aaaaaa';
+        });
+
+        // ⟲ Reset color: restore snapshot color, standard default, or grey
+        $('#osy-gridTechGroup').on('click', '.techgroup-color-reset', function () {
+            var techGroupId = $(this).attr('data-techgroupid');
+            var group = model.techGroups.find(function (tg) {
+                return tg.TechGroupId === techGroupId;
+            });
+            if (!group) return;
+
+            var resetColor;
+            if (techGroupId.indexOf('TG_STD_') === 0) {
+                // standard group — always reset to recommended default color regardless of saved changes
+                var stdGroups = DefaultObj.defaultTechGroupsStandard();
+                var stdGroup = stdGroups.find(function (s) { return s.TechGroupId === techGroupId; });
+                resetColor = stdGroup ? stdGroup.Color : '#aaaaaa';
+            } else if (techGroupColorSnapshot[techGroupId]) {
+                // custom group that existed when model opened — restore its original color
+                resetColor = techGroupColorSnapshot[techGroupId];
+            } else {
+                // newly added custom group — reset to grey
+                resetColor = '#aaaaaa';
+            }
+
+            group.Color = resetColor;
+            $divTechGroup.jqxGrid('refresh');
+        });
+
+        // ⟲ Add defaults — merge missing standard groups back and refresh grid
+        $('#osy-caseForm').undelegate('#osy-addDefaultTechGroups', 'click');
+        $('#osy-caseForm').delegate('#osy-addDefaultTechGroups', 'click', function (event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            var existingNames = model.techGroups.map(function (tg) {
+                return tg.TechGroup.trim().toLowerCase();
+            });
+            DefaultObj.defaultTechGroupsStandard().forEach(function (stdGroup) {
+                if (!existingNames.includes(stdGroup.TechGroup.toLowerCase())) {
+                    model.techGroups.push(JSON.parse(JSON.stringify(stdGroup)));
+                }
+            });
+            $divTechGroup.jqxGrid('updatebounddata', 'data');
+        });
+
         //TIMESLICES GRID AND EVENTS
         $('#osy-caseForm').undelegate("#osy-addTs", "click");
         $('#osy-caseForm').delegate("#osy-addTs", "click", function (event) {

@@ -122,6 +122,19 @@ export class DefaultObj{
         return defaultObj;
     }
 
+    static defaultTechGroupsStandard() {
+        return [
+            { TechGroupId: 'TG_STD_Energy',     TechGroup: 'Energy',      Desc: 'Energy technologies',      Color: '#f5a623' },
+            { TechGroupId: 'TG_STD_Land',        TechGroup: 'Land',        Desc: 'Land technologies',        Color: '#7ed321' },
+            { TechGroupId: 'TG_STD_Water',       TechGroup: 'Water',       Desc: 'Water technologies',       Color: '#4a90d9' },
+            { TechGroupId: 'TG_STD_Climate',     TechGroup: 'Climate',     Desc: 'Climate technologies',     Color: '#e74c3c' },
+            { TechGroupId: 'TG_STD_Transport',   TechGroup: 'Transport',   Desc: 'Transport technologies',   Color: '#9b59b6' },
+            { TechGroupId: 'TG_STD_Industry',    TechGroup: 'Industry',    Desc: 'Industry technologies',    Color: '#888888' },
+            { TechGroupId: 'TG_STD_Agriculture', TechGroup: 'Agriculture', Desc: 'Agriculture technologies', Color: '#a8d08d' },
+            { TechGroupId: 'TG_STD_Waste',       TechGroup: 'Waste',       Desc: 'Waste technologies',       Color: '#a0956b' },
+        ];
+    }
+
     static defaultComm(first=false){
         let id;
         if(first){

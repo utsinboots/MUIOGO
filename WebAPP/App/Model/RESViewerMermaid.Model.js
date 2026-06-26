@@ -8,6 +8,8 @@ export class Model {
         let ActivityComms = DataModel.activityComms(genData);
         let TechNames = DataModel.TechName(genData);
         let CommNames = DataModel.CommName(genData);
+        let techData = DataModel.getTechData(genData); // for TechGroup color lookup
+        let techGroupData = DataModel.getTechGroupData(genData); // for TechGroup color lookup
 
         // let TechUnits = DataModel.getTechUnits(genData);
         // let CommUnits = DataModel.getCommUnits(genData);
@@ -48,7 +50,24 @@ export class Model {
             });
         });
 
-        this.casename = casename; 
+        var DEFAULT_TECHGROUP_COLOR = '#aaaaaa';
+
+        // Apply TechGroup fill colors to each node in the Mermaid diagram
+        $.each(labelIndex, function (techId, nodeId) {
+            var tech = techData[techId];
+            var color = DEFAULT_TECHGROUP_COLOR;
+
+            if (tech && tech.TG && tech.TG.length > 0) {
+                var group = techGroupData[tech.TG[0]];
+                if (group && group.Color) {
+                    color = group.Color;
+                }
+            }
+
+            graphString += 'style ' + nodeId + ' fill:' + color + '\n';
+        });
+
+        this.casename = casename;
         this.graphString = graphString;
     }
 }

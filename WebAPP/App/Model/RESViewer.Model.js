@@ -29,11 +29,14 @@ export class Model {
 
         // Returns techgroup color for a technology, fallback to default grey
         var getTechColor = function (obj) {
-            if (!obj || !obj.TG || obj.TG.length === 0) return DEFAULT_TECHGROUP_COLOR;
-            
-            var group = techGroupData[obj.TG[0]];
-            if (!group) return DEFAULT_TECHGROUP_COLOR;
-            
+            var tech = techData[obj.TechId];
+            if (!tech || !tech.TG || tech.TG.length === 0) { 
+                return DEFAULT_TECHGROUP_COLOR;
+            }
+            var group = techGroupData[tech.TG[0]];
+            if (!group) {
+                return DEFAULT_TECHGROUP_COLOR;
+            }
             return group.Color || DEFAULT_TECHGROUP_COLOR;
         };
 
