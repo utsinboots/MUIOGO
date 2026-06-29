@@ -1,3 +1,48 @@
+[project]
+name = "muiogo"
+version = "0.1.0"
+description = "MUIOGO, integration project to bring the purely Python-based OG-Core model into MUIO, the GUI for OSeMOSYS (CLEWS)"
+readme = "README.md"
+requires-python = ">=3.10, <3.13"
+dependencies = [
+    "blinker==1.8.2",
+    "boto3==1.34.122",
+    "botocore==1.34.122",
+    "click==8.1.7",
+    "colorama==0.4.6",
+    "et-xmlfile==1.1.0",
+    "Flask==3.0.3",
+    "Flask-Cors==4.0.1",
+    "itsdangerous==2.2.0",
+    "Jinja2==3.1.4",
+    "jmespath==1.0.1",
+    "MarkupSafe==2.1.5",
+    "numpy==1.26.4",
+    "openpyxl==3.1.4",
+    "packaging==24.0",
+    "pandas==2.2.2",
+    "python-dateutil==2.9.0.post0",
+    "python-dotenv==1.0.1",
+    "pytz==2024.1",
+    "s3transfer==0.10.1",
+    "tzdata==2024.1",
+    "waitress==3.0.0",
+    "Werkzeug==3.0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/EAPD-DRB/MUIOGO"
+"Issue Tracker" = "https://github.com/EAPD-DRB/MUIOGO/issues"
+
+[tool.uv]
+# MUIOGO is an application we run (python API/app.py), not a library that other
+# code imports — so uv installs only the dependencies; it does not build or
+# install MUIOGO itself as a package.
+package = false
+
+#----------------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------------
 [tool.ruff]
 target-version = "py310"
 line-length = 120
