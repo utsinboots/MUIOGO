@@ -57,6 +57,8 @@ export default class Pivot {
             });
     }
 
+    // Collect unique unit labels from the pivot data, convert HTML superscripts
+    // to Unicode (e.g. <sup>3</sup> → ³), and return a comma-separated string.
     static getUnitLabel(pivotData) {
         const supMap = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'};
         const labels = [...new Set(
@@ -74,6 +76,9 @@ export default class Pivot {
         return labels.join(', ');
     }
 
+    // Update the Pivot chart unit display. Show unit(s) on the Y-axis when the
+    // label is short; otherwise show "Multiple units" on the Y-axis and display
+    // the full unit list below the chart.
     static setUnitDisplay(pivotData, flexChart) {
         const label = Pivot.getUnitLabel(pivotData);
         if (label.length > 40) {
