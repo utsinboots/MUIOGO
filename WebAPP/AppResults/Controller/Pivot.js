@@ -57,6 +57,34 @@ export default class Pivot {
             });
     }
 
+    static getUnitLabel(pivotData) {
+        const supMap = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'};
+        const labels = [...new Set(
+            pivotData
+                .map(r => r['Unit'])
+                .filter(Boolean)
+                .map(u => u
+                    .replace(/<sup>(\d+)<\/sup>/g, (_, n) =>
+                        n.split('').map(d => supMap[d]).join('')
+                    )
+                    .replace(/<[^>]+>/g, '')
+                )
+        )];
+        if (!labels.length) return '';
+        return labels.join(', ');
+    }
+
+    static setUnitDisplay(pivotData, flexChart) {
+        const label = Pivot.getUnitLabel(pivotData);
+        if (label.length > 40) {
+            flexChart.axisY.title = 'Multiple units';
+            $('#pivotChartUnitLabel').text('Y-axis units: ' + label);
+        } else {
+            flexChart.axisY.title = label;
+            $('#pivotChartUnitLabel').text('');
+        }
+    }
+
     static refreshPage(casename) {
         Base.setSession(casename)
             .then(response => {
@@ -333,6 +361,8 @@ export default class Pivot {
         // app.pivotChart.flexChart.palette = wijmo.chart.Palettes.midnight
         app.pivotChart.flexChart.palette = model.ColorSchemes.osyScheme;
 
+        Pivot.setUnitDisplay(model.pivotData, app.pivotChart.flexChart);
+
         // app.pivotChart.flexChart.axisX.itemFormatter = function (engine, label) {
         //     label.text = wijmo.toPlainText(label.text);
         //     return label;
@@ -566,6 +596,7 @@ export default class Pivot {
                 let pivotData = DataModelResult.getPivot(DATA, model.genData, model.VARIABLES, model.group, model.param);
                 model.pivotData = pivotData;
                 app.engine.itemsSource = model.pivotData;
+                Pivot.setUnitDisplay(model.pivotData, app.pivotChart.flexChart);
 
 
                 //console.log('pivot source ok')
