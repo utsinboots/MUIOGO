@@ -322,11 +322,6 @@ export class Grid {
     }
 
     static techsGrid(techs, commodities, techGroups, emissions, commNames, emiNames, techGroupNames) {
-        // Live color lookup — reads directly from techGroups array so changes reflect immediately
-        var getTechGroupColor = function (techGroupId) {
-            var tg = techGroups.find(function (t) { return t.TechGroupId === techGroupId; });
-            return tg ? (tg.Color || '#aaaaaa') : '#aaaaaa';
-        };
 
         ///settings units
         let UnitsArray = [];
@@ -369,13 +364,9 @@ export class Grid {
             editor.jqxDropDownList({
                 source: this.daTechGroups, displayMember: 'TechGroup', valueMember: 'TechGroupId', checkboxes: true,theme: this.themeMaterial,filterHeight:30,
                 renderer: function (index, label, value) {
-                    var color = getTechGroupColor(value);
-                    var desc = data[index] ? data[index]['Desc'] : '';
-                    return '<div data-toggle="tooltip" data-placement="top" title="' + desc + '">' +
-                        '<span style="display:inline-block; width:12px; height:12px; background:' + color +
-                        '; margin-right:6px; vertical-align:middle; border:1px solid #999;"></span>' +
-                        label +
-                        '</div>';
+                    let tootltipValue = label;
+                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
+                    return tooltipContent
                 }
                 , filterable: true
             });
@@ -473,14 +464,9 @@ export class Grid {
                 var values = value.split(/,\s*/);
             }
             $.each(values, function (id, techGroupId) {
-                var color = getTechGroupColor(techGroupId);
-                var name = techGroupNames[techGroupId] || techGroupId;
-                valueNames.push(
-                    '<span style="display:inline-block; width:12px; height:12px; background:' +
-                    color + '; margin-right:6px; vertical-align:middle; border:1px solid #999;"></span>' + name
-                );
+                valueNames.push(techGroupNames[techGroupId])
             });
-            return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px; text-align:left; padding-left:8px;">${valueNames} </div>`;
+            return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${valueNames} </div>`;
         }.bind(this);
 
         var cellsrendererComms = function (row, columnfield, value, defaulthtml, columnproperties) {
@@ -591,21 +577,10 @@ export class Grid {
         }
 
         var cellsrendererbutton = function (row, column, value) {
+            if (row == 0) {
+                return '';
+            }
             return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteTechGroup" data-id=' + row + ' ><i class="fa  fa-times danger"></i>Delete</span>';
-        }
-
-        //color cell renderer for techgroup grid — includes color picker and ⟲ reset icon
-        var cellsrendererColor = function (row, columnfield, value) {
-            var color = value || '#aaaaaa';
-            var techGroupId = $('#osy-gridTechGroup').jqxGrid('getcellvalue', row, 'TechGroupId');
-            return `<div style="padding:6px; text-align:center; display:flex; align-items:center; justify-content:center; gap:4px;">
-                    <input type="color" value="${color}"
-                        style="width:40px; height:24px; border:none; cursor:pointer; padding:0;"
-                        data-techgroupid="${techGroupId}"
-                        class="techgroup-color-picker">
-                    <span class="techgroup-color-reset" data-techgroupid="${techGroupId}"
-                        style="cursor:pointer; font-size:14px; color:#666;" title="Reset color">⟲</span>
-                    </div>`;
         }
 
         $("#osy-gridTechGroup").jqxGrid({
@@ -621,17 +596,12 @@ export class Grid {
             sortable:true,
             showsortcolumnbackground: false,
             autoshowcolumnsmenubutton: false,
-
             columns: [
                 // { text: 'TechGroupId', datafield: 'TechGroupId', hidden: true },
                 { text: 'Technology group name', datafield: 'TechGroup', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Description', datafield: 'Desc', width: '55%', align: 'center', cellsalign: 'left', sortable: false, menu:false }, //width reduced from 70% to 55% to accommodate Color column
-                { text: 'Color', datafield: 'Color', width: '15%', align: 'center', cellsalign: 'center', cellsrenderer: cellsrendererColor, editable: false, sortable: false, menu:false }, //color picker column - lets modeler assign a display color to each tech group
-                { text: '<span style="padding:10px 4px; width:65%; border:none; display:inline-block; box-sizing:border-box;" id="osy-addTechGroup" class="btn btn-osy"><i class="fa fa-plus fa-lg"></i>Add group</span><span style="padding:10px 0; width:35%; border:none; display:inline-block; box-sizing:border-box; text-align:center; padding-left:0 !important; padding-right:0 !important; margin:0;" id="osy-addDefaultTechGroups" class="btn btn-osy" title="Add missing standard groups">Defaults</span>', datafield: 'TechGroupId', width: '10%', cellsrenderer: cellsrendererbutton, editable: false,sortable: false, menu:false },
+                { text: 'Description', datafield: 'Desc', width: '70%', align: 'center', cellsalign: 'left', sortable: false, menu:false },
+                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addTechGroup" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add group</span>', datafield: 'TechGroupId', width: '10%', cellsrenderer: cellsrendererbutton, editable: false,sortable: false, menu:false },
             ]
-
-
-
         });
     }
 

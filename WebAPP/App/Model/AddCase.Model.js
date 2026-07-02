@@ -85,17 +85,6 @@ export class Model {
       this.techs = DefaultObj.defaultTech(true);
       this.stg = [];
       this.techGroups = DefaultObj.defaultTechGroup(true);
-
-      // Merge standard tech groups into new model
-      var existingNames = this.techGroups.map(function (tg) {
-          return tg.TechGroup.trim().toLowerCase();
-      });
-      DefaultObj.defaultTechGroupsStandard().forEach(function (stdGroup) {
-          if (!existingNames.includes(stdGroup.TechGroup.toLowerCase())) {
-              this.techGroups.push(JSON.parse(JSON.stringify(stdGroup)));
-          }
-      }, this);
-
       this.commodities = DefaultObj.defaultComm(true);
       this.emissions = DefaultObj.defaultEmi(true);
       this.timeslices = DefaultObj.defaultTs(true);

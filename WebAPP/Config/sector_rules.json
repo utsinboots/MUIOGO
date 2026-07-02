@@ -1,0 +1,83 @@
+{
+    "_comment": [
+        "CLEWs sector color rules for the RES Viewer (Sankey) and simple Mermaid diagram.",
+        "Sector legend labels and node colors are generated dynamically from this file — no hardcoding in JS.",
+        "",
+        "Legend labels shown in the diagram (in priority order, only if present in the current model):",
+        "  Energy      #e67e22  orange   — electricity, fuels, power generation",
+        "  Water       #2980b9  blue     — water supply, groundwater, irrigation",
+        "  Land        #27ae60  green    — land use, forest, grassland, plantation",
+        "  Agriculture #f1c40f  yellow   — crops, food, livestock",
+        "  Transport   #8e44ad  purple   — mobility, freight, biofuels for transport",
+        "  Climate     #c0392b  red      — GHG emissions, carbon accounting",
+        "  Mixed       #795548  brown    — technology with outputs spanning multiple sectors",
+        "  Unknown     #95a5a6  grey     — technology whose OAR/units/name did not match any rule",
+        "",
+        "Inference order per technology (first match wins):",
+        "  1. OAR commodity name prefix or description keyword → sector",
+        "  2. If no OAR match: CapUnitId / ActUnitId → sector",
+        "  3. If no unit match: technology name prefix → sector",
+        "  4. Multiple sectors matched → Mixed; nothing matched → Unknown",
+        "",
+        "secondaryFlows: water-balance accounting outputs filtered before matching (would cause false Water hits).",
+        "emissionsFlows: emission commodity names filtered before matching (handled by Climate rules instead).",
+        "To add a sector or extend matching: add an entry under 'sectors' and update 'sectorPriority'.",
+        "To change a color: edit the 'color' field — the legend and node colors update automatically on next load."
+    ],
+
+    "sectorPriority": ["Energy", "Water", "Land", "Agriculture", "Transport", "Climate"],
+
+    "secondaryFlows": ["WTREVT", "WTRGWT", "WTRRUN", "WTRPRC"],
+
+    "emissionsFlows": ["CO2", "N2O", "CH4", "CO2EQ", "GHG"],
+
+    "sectors": {
+        "Energy": {
+            "color": "#e67e22",
+            "commodityPrefixes": ["ELC", "WND", "SOL", "HYD", "COA", "GAS", "DSL", "PWR"],
+            "commodityKeywords": ["electricity", "solar", "wind", "hydro", "coal", "gas", "diesel", "power"],
+            "techPrefixes": ["PWR", "MIN", "IMP", "RSC"],
+            "units": ["PJ", "GW", "GWh", "kWh", "TWh"]
+        },
+        "Water": {
+            "color": "#2980b9",
+            "commodityPrefixes": ["WTR", "PUBWAT", "AGRWAT", "PWRWAT", "SURWTR", "GRNDWTR"],
+            "commodityKeywords": ["water", "surface water", "groundwater", "precipitation", "irrigation"],
+            "techPrefixes": ["DEM", "UPS"],
+            "units": ["10^9m3", "Mm3", "m3"]
+        },
+        "Land": {
+            "color": "#27ae60",
+            "commodityPrefixes": ["LND", "LBLT", "LWAT", "FOR", "GRA", "PLA", "SHR", "SWI", "BAR"],
+            "commodityKeywords": ["land", "forest", "grassland", "plantation", "shrub", "built-up"],
+            "techPrefixes": ["LND", "RSC"],
+            "units": ["10^3km2", "Mha", "km2"]
+        },
+        "Agriculture": {
+            "color": "#f1c40f",
+            "commodityPrefixes": ["CRP", "AGR", "CROP", "RICE", "MAIZE", "FOOD"],
+            "commodityKeywords": ["crop", "rice", "maize", "food", "agriculture", "livestock"],
+            "techPrefixes": ["AGR", "FARM"],
+            "units": ["MTon", "kTon"]
+        },
+        "Transport": {
+            "color": "#8e44ad",
+            "commodityPrefixes": ["TRA", "TRN", "TRABIO"],
+            "commodityKeywords": ["transport", "biofuel", "mobility", "freight"],
+            "techPrefixes": ["TRA", "TRN"],
+            "units": ["Mvkm", "Bvkm"]
+        },
+        "Climate": {
+            "color": "#c0392b",
+            "commodityPrefixes": ["GHG", "EMI", "CLIM"],
+            "commodityKeywords": ["emission", "carbon", "climate", "greenhouse"],
+            "techPrefixes": [],
+            "units": []
+        }
+    },
+
+    "sectorColors": {
+        "Mixed":   "#795548",
+        "Unknown": "#95a5a6"
+    }
+}

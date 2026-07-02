@@ -164,18 +164,9 @@ export class DataModel{
     static TechGroupName(genData){
         let techGroupNames = {};
         $.each(genData['osy-techGroups'], function (id, obj) {
-          techGroupNames[obj.TechGroupId] = obj.TechGroup;
+            techGroupNames[obj.TechGroupId] = obj.TechGroup;
         });
         return techGroupNames;
-    }
-
-    // Returns tech groups keyed by TechGroupId for fast lookup in RES Viewer color coding
-    static getTechGroupData(genData){
-        let techGroupData = {};
-        $.each(genData['osy-techGroups'], function (id, obj) {
-            techGroupData[obj.TechGroupId] = obj;
-        });
-        return techGroupData;
     }
 
     /////////////////////////////////////////////////
@@ -2390,7 +2381,93 @@ export class DataModel{
                 });
             }); 
             RYCTschart[param] = chartData;    
-        }); 
+        });
         return RYCTschart;
+    }
+
+    // Infers the CLEWs sector for a technology based on its OAR commodity names/descriptions,
+    // unit IDs, and tech name prefix — in that order. Returns 'Mixed' if OAR spans multiple
+    // sectors, or 'Unknown' if nothing matched. Pure read-only: does not mutate any arguments.
+    // sectorRules: parsed contents of Config/sector_rules.json
+    // commData: object keyed by CommId → { Comm, Desc, UnitId }
+    static inferTechSector(tech, commData, sectorRules) {
+        try { return DataModel._inferTechSectorImpl(tech, commData, sectorRules); }
+        catch (e) { console.warn('inferTechSector error', e); return 'Unknown'; }
+    }
+    static _inferTechSectorImpl(tech, commData, sectorRules) {
+        var secondaryFlows = sectorRules.secondaryFlows || [];
+        var emissionsFlows = sectorRules.emissionsFlows || [];
+        var allFiltered = secondaryFlows.concat(emissionsFlows); // water-balance and emissions flows excluded before matching
+        var priority = sectorRules.sectorPriority || Object.keys(sectorRules.sectors);
+        var sectors = sectorRules.sectors;
+
+        // Step 1: filter secondary/system flows from OAR
+        var primaryOAR = (tech.OAR || []).filter(function (commId) {
+            var comm = commData[commId];
+            if (!comm) return false;
+            var name = comm.Comm.toUpperCase();
+            return !allFiltered.some(function (k) { return name === k || name.startsWith(k); });
+        });
+
+        // Step 2: map each primary commodity to a sector in priority order
+        var matched = new Set();
+        primaryOAR.forEach(function (commId) {
+            var comm = commData[commId];
+            var name = (comm.Comm || '').toUpperCase();
+            var desc = (comm.Desc || '').toLowerCase();
+            for (var i = 0; i < priority.length; i++) {
+                var sectorName = priority[i];
+                var rule = sectors[sectorName];
+                var prefixMatch = (rule.commodityPrefixes || []).some(function (p) {
+                    return name === p || name.startsWith(p);
+                });
+                var keywordMatch = (rule.commodityKeywords || []).some(function (k) {
+                    return desc.includes(k.toLowerCase());
+                });
+                if (prefixMatch || keywordMatch) {
+                    matched.add(sectorName);
+                    break;
+                }
+            }
+        });
+
+        // Step 3: single sector resolved
+        if (matched.size === 1) return [...matched][0];
+
+        // Step 4: unit fallback using both CapUnitId and ActUnitId
+        if (matched.size === 0) {
+            var rawUnit = ((tech.CapUnitId || '') + ' ' + (tech.ActUnitId || '')).replace(/<[^>]+>/g, '');
+            for (var j = 0; j < priority.length; j++) {
+                var sName = priority[j];
+                var uRule = sectors[sName];
+                if ((uRule.units || []).some(function (u) { return rawUnit.includes(u); })) {
+                    return sName;
+                }
+            }
+        }
+
+        // Step 5: tech name prefix fallback
+        if (matched.size === 0) {
+            var techName = (tech.Tech || '').toUpperCase();
+            for (var m = 0; m < priority.length; m++) {
+                var tName = priority[m];
+                var tRule = sectors[tName];
+                if ((tRule.techPrefixes || []).some(function (p) {
+                    return techName === p || techName.startsWith(p);
+                })) {
+                    return tName;
+                }
+            }
+        }
+
+        // Step 6: Mixed if multiple sectors, Unknown if nothing matched
+        return matched.size > 1 ? 'Mixed' : 'Unknown';
+    }
+
+    // Returns the hex color for a sector name from sector_rules.json.
+    // Checks named sectors first, then sectorColors (Mixed/Unknown), then falls back to grey.
+    static getSectorColor(sector, sectorRules) {
+        if (sectorRules && sectorRules.sectors && sectorRules.sectors[sector]) return sectorRules.sectors[sector].color;
+        return (sectorRules && sectorRules.sectorColors && sectorRules.sectorColors[sector]) || '#aaaaaa';
     }
 }

@@ -10,6 +10,9 @@ import { Model } from "../Model/AddCase.Model.js";
 import { Navbar } from "./Navbar.js";
 import { DEF } from "../../Classes/Definition.Class.js";
 import { Sidebar } from "./Sidebar.js";
+// clearTechColorCache is called after save so stale inferred colors don't persist
+// if the user edits technologies, OAR, commodities, or units before reopening RES Viewer.
+import { clearTechColorCache } from "../../Classes/SectorColors.Class.js";
 
 export default class AddCase {
     static onLoad() {
@@ -262,6 +265,7 @@ export default class AddCase {
             .then(response => {
                 Message.loaderEnd()
                 if (response.status_code == "created") {
+                    clearTechColorCache(casename); // new model — initialize cache tracking for this casename
                     $("#osy-new").show();
                     $('#osy-update').show();
                     $('#osy-save').hide();
@@ -278,6 +282,7 @@ export default class AddCase {
                     }
                 }
                 if (response.status_code == "edited") {
+                    clearTechColorCache(casename); // model data changed — discard cached sector colors so RES Viewer re-infers on next open
                     Html.title(casename, 'Model configuration', 'create & edit');
                     $("#osy-new").show();
                     Navbar.initPage(casename);
@@ -419,7 +424,7 @@ export default class AddCase {
             let defaultTechGroup = DefaultObj.defaultTechGroup();
             //tech grid se pravi dinalicki potrebno je updatovati model
             //JSON parse strungify potrebno da iz nekog razloga izbacino elemente uid boundindex...
-            model.techGroups.push(JSON.parse(JSON.stringify(defaultTechGroup[0]))); //copies all fields inside defaultTechGroup[0]
+            model.techGroups.push(JSON.parse(JSON.stringify(defaultTechGroup[0], ['TechGroupId', 'TechGroup', 'Desc'])));
             //model.techs.push(defaultTech[0]);
             //update technames
             model.techGroupNames[defaultTechGroup[0]['TechGroupId']] = defaultTechGroup[0]['TechGroup'];
@@ -464,66 +469,6 @@ export default class AddCase {
                 var techGroupId = $divTechGroup.jqxGrid('getcellvalue', rowBoundIndex, 'TechGroupId');
                 model.techGroupNames[techGroupId] = value;
             }
-        });
-
-        //Event listener for color picker change in techgroup, find by TechGroupId
-        $('#osy-gridTechGroup').on('change', '.techgroup-color-picker', function () {
-            var techGroupId = $(this).attr('data-techgroupid');
-            var color = $(this).val();
-            var group = model.techGroups.find(function (tg) {
-                return tg.TechGroupId === techGroupId;
-            });
-            if (group) {
-                group.Color = color;
-            }
-        });
-
-        // Snapshot of colors at model load time — used by ⟲ reset to restore original colors
-        var techGroupColorSnapshot = {};
-        model.techGroups.forEach(function (tg) {
-            techGroupColorSnapshot[tg.TechGroupId] = tg.Color || '#aaaaaa';
-        });
-
-        // ⟲ Reset color: restore snapshot color, standard default, or grey
-        $('#osy-gridTechGroup').on('click', '.techgroup-color-reset', function () {
-            var techGroupId = $(this).attr('data-techgroupid');
-            var group = model.techGroups.find(function (tg) {
-                return tg.TechGroupId === techGroupId;
-            });
-            if (!group) return;
-
-            var resetColor;
-            if (techGroupId.indexOf('TG_STD_') === 0) {
-                // standard group — always reset to recommended default color regardless of saved changes
-                var stdGroups = DefaultObj.defaultTechGroupsStandard();
-                var stdGroup = stdGroups.find(function (s) { return s.TechGroupId === techGroupId; });
-                resetColor = stdGroup ? stdGroup.Color : '#aaaaaa';
-            } else if (techGroupColorSnapshot[techGroupId]) {
-                // custom group that existed when model opened — restore its original color
-                resetColor = techGroupColorSnapshot[techGroupId];
-            } else {
-                // newly added custom group — reset to grey
-                resetColor = '#aaaaaa';
-            }
-
-            group.Color = resetColor;
-            $divTechGroup.jqxGrid('refresh');
-        });
-
-        // ⟲ Add defaults — merge missing standard groups back and refresh grid
-        $('#osy-caseForm').undelegate('#osy-addDefaultTechGroups', 'click');
-        $('#osy-caseForm').delegate('#osy-addDefaultTechGroups', 'click', function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            var existingNames = model.techGroups.map(function (tg) {
-                return tg.TechGroup.trim().toLowerCase();
-            });
-            DefaultObj.defaultTechGroupsStandard().forEach(function (stdGroup) {
-                if (!existingNames.includes(stdGroup.TechGroup.toLowerCase())) {
-                    model.techGroups.push(JSON.parse(JSON.stringify(stdGroup)));
-                }
-            });
-            $divTechGroup.jqxGrid('updatebounddata', 'data');
         });
 
         //TIMESLICES GRID AND EVENTS

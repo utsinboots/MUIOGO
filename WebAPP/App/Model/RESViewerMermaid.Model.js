@@ -1,15 +1,16 @@
 import { DataModel } from "../../Classes/DataModel.Class.js";
+import { getCachedTechColor, getCachedTechSector } from "../../Classes/SectorColors.Class.js";
 
 export class Model {
     
-    constructor (casename, genData, RYTCMdata) {
+    constructor (casename, genData, RYTCMdata, sectorRules) {
 
         //let ActivityTechs = DataModel.activityTechs(techs);
         let ActivityComms = DataModel.activityComms(genData);
         let TechNames = DataModel.TechName(genData);
         let CommNames = DataModel.CommName(genData);
-        let techData = DataModel.getTechData(genData); // for TechGroup color lookup
-        let techGroupData = DataModel.getTechGroupData(genData); // for TechGroup color lookup
+        let techData = DataModel.getTechData(genData);
+        let commData = DataModel.getCommData(genData);
 
         // let TechUnits = DataModel.getTechUnits(genData);
         // let CommUnits = DataModel.getCommUnits(genData);
@@ -50,24 +51,21 @@ export class Model {
             });
         });
 
-        var DEFAULT_TECHGROUP_COLOR = '#aaaaaa';
-
-        // Apply TechGroup fill colors to each node in the Mermaid diagram
+        // Color each Mermaid node by inferred CLEWs sector using the shared SectorColors cache.
+        // Falls back to grey if tech is not found or sectorRules failed to load.
         $.each(labelIndex, function (techId, nodeId) {
             var tech = techData[techId];
-            var color = DEFAULT_TECHGROUP_COLOR;
-
-            if (tech && tech.TG && tech.TG.length > 0) {
-                var group = techGroupData[tech.TG[0]];
-                if (group && group.Color) {
-                    color = group.Color;
-                }
-            }
-
-            graphString += 'style ' + nodeId + ' fill:' + color + '\n';
+            var nodeColor = sectorRules && tech
+                ? getCachedTechColor(tech, commData, sectorRules)
+                : '#aaaaaa';
+            graphString += 'style ' + nodeId + ' fill:' + nodeColor + '\n';
         });
 
         this.casename = casename;
         this.graphString = graphString;
+        this.sectorRules = sectorRules; // passed to renderSectorLegend after initPage
+        this.techData = techData;       // needed by renderSectorLegend to look up each tech
+        this.commData = commData;       // needed by getCachedTechSector inside renderSectorLegend
+        this.labelIndex = labelIndex;   // maps TechId → Mermaid node index; used to get tech list for legend
     }
 }

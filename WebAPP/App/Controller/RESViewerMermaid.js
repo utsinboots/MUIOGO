@@ -5,6 +5,8 @@ import { Model } from "../Model/RESViewerMermaid.Model.js";
 import { Osemosys } from "../../Classes/Osemosys.Class.js";
 import { DEF } from "../../Classes/Definition.Class.js";
 import { MessageSelect } from "./MessageSelect.js";
+// SectorColors provides the shared sector inference cache and legend renderer used by both RES Viewer and Mermaid.
+import { getSectorRules, syncCaseName, renderSectorLegend } from "../../Classes/SectorColors.Class.js";
 
 export default class RESViewer {
     static onLoad() {
@@ -23,9 +25,11 @@ export default class RESViewer {
                     MessageSelect.init(RESViewer.refreshPage.bind(RESViewer));
                 }
             })
-            .then(data => {
+            .then(async data => {
                 let [casename, genData, RYTCMdata] = data;
-                let model = new Model(casename, genData, RYTCMdata);
+                syncCaseName(genData['osy-casename']);
+                const sectorRules = await getSectorRules();
+                let model = new Model(casename, genData, RYTCMdata, sectorRules);
                 this.initPage(model);
                 this.initEvents(model);
             })
@@ -39,6 +43,12 @@ export default class RESViewer {
 		mermaid.init(undefined, document.querySelectorAll(".mermaid"));
 	}
 
+
+    // Collects TechIds from the Mermaid labelIndex and delegates to the shared legend renderer.
+    static renderSectorLegend(model) {
+        const techIds = Object.keys(model.labelIndex || {});
+        renderSectorLegend('sectorLegendMermaid', techIds, model.techData, model.commData, model.sectorRules);
+    }
 
     static initPage(model) {
         Message.clearMessages();
@@ -69,6 +79,7 @@ export default class RESViewer {
         // }
 
         this.renderMermaid();
+        this.renderSectorLegend(model);
 
         Html.title(model.casename, 'Model diagram', '');
     }
@@ -84,9 +95,11 @@ export default class RESViewer {
                 promise.push(RYTCMdata);
                 return Promise.all(promise);
             })
-            .then(data => {
+            .then(async data => {
                 let [casename, genData, RYTCMdata] = data;
-                let model = new Model(casename, genData, RYTCMdata);
+                syncCaseName(genData['osy-casename']);
+                const sectorRules = await getSectorRules();
+                let model = new Model(casename, genData, RYTCMdata, sectorRules);
                 this.initPage(model);
                 this.initEvents(model);
             })

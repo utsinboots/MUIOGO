@@ -2,16 +2,16 @@ import { DataModel } from "../../Classes/DataModel.Class.js";
 
 export class Model {
 
-    constructor (casename, genData, DemandComms, settings, techSelect=null) {
+    // colorFn: optional cached color function from SectorColors (getCachedTechColor).
+    // When provided, avoids re-running inference on every re-render (node click, filter, zoom).
+    constructor (casename, genData, DemandComms, settings, sectorRules, techSelect=null, colorFn=null) {
 
         let TechIdByName = DataModel.TechIdByName(genData);
-        // let CommNames = DataModel.CommName(genData); 
+        // let CommNames = DataModel.CommName(genData);
         // let DemandComms = DataModel.getDemandComms(RYCdata, genData['osy-years']);
         let resData = DataModel.RESData(genData, DemandComms);
         let techData = DataModel.getTechData(genData);
         let commData = DataModel.getCommData(genData);
-        let techGroupData = DataModel.getTechGroupData(genData); //for color lookup by techgroup
-
         console.log('resData ', resData)
 
         let index = 0;
@@ -25,19 +25,14 @@ export class Model {
         let labelLink = [];
         let selectedTechs = [];
 
-        var DEFAULT_TECHGROUP_COLOR = '#aaaaaa';
-
-        // Returns techgroup color for a technology, fallback to default grey
+        // Returns inferred sector color; uses colorFn cache if provided by controller.
+        // Read-only: never mutates tech, commData, sectorRules, or genData.
         var getTechColor = function (obj) {
             var tech = techData[obj.TechId];
-            if (!tech || !tech.TG || tech.TG.length === 0) { 
-                return DEFAULT_TECHGROUP_COLOR;
-            }
-            var group = techGroupData[tech.TG[0]];
-            if (!group) {
-                return DEFAULT_TECHGROUP_COLOR;
-            }
-            return group.Color || DEFAULT_TECHGROUP_COLOR;
+            if (!tech || !sectorRules) return '#aaaaaa';
+            if (colorFn) return colorFn(tech, commData, sectorRules);
+            var sector = DataModel.inferTechSector(tech, commData, sectorRules);
+            return DataModel.getSectorColor(sector, sectorRules);
         };
 
         $.each(resData.Techs, function (id, obj) {
@@ -254,6 +249,7 @@ export class Model {
         this.techData = techData;
         this.commData = commData;
         this.settings = settings;
+        this.sectorRules = sectorRules;
         this.pageId = 'RES'
     }
 }

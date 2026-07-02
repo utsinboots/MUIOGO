@@ -7,9 +7,13 @@ import { DEF } from "../../Classes/Definition.Class.js";
 import { MessageSelect } from "./MessageSelect.js";
 import { Chart } from "../../Classes/Chart.Class.js";
 import { DataModel } from "../../Classes/DataModel.Class.js";
+// SectorColors provides the shared sector inference cache and legend renderer used by both RES Viewer and Mermaid.
+import { getSectorRules, getCachedTechColor, clearTechColorCache, syncCaseName, renderSectorLegend } from "../../Classes/SectorColors.Class.js";
 
 export default class RESViewer {
     static onLoad() {
+        // Clear on page load — model data may have changed since last visit
+        clearTechColorCache();
         Message.loaderStart('Preparing RES...');
         Base.getSession()
             .then(response => {
@@ -26,13 +30,15 @@ export default class RESViewer {
                     MessageSelect.init(RESViewer.refreshPage.bind(RESViewer));
                 }
             })
-            .then(data => {
+            .then(async data => {
                 let settings = {};
                 settings.Colors = false;
                 settings.Desc = false;
                 let [casename, genData, RYCdata] = data;
+                syncCaseName(genData['osy-casename']);
                 let DemandComms = DataModel.getDemandComms(RYCdata, genData['osy-years']);
-                let model = new Model(casename, genData, DemandComms, settings);
+                const sectorRules = await getSectorRules();
+                let model = new Model(casename, genData, DemandComms, settings, sectorRules, null, getCachedTechColor);
                 this.initPage(model);
                 this.initEvents(model);
             })
@@ -53,14 +59,15 @@ export default class RESViewer {
                 promise.push(RYCdata);
                 return Promise.all(promise);
             })
-            .then(data => {
+            .then(async data => {
                 let [casename, genData, RYCdata] = data;
                 let settings = {};
                 settings.Colors = $("#useColors").is(":checked");
                 settings.Desc = $("#useDesc").is(":checked");
-
+                syncCaseName(genData['osy-casename']);
                 let DemandComms = DataModel.getDemandComms(RYCdata, genData['osy-years']);
-                let model = new Model(casename, genData, DemandComms, settings);
+                const sectorRules = await getSectorRules();
+                let model = new Model(casename, genData, DemandComms, settings, sectorRules, null, getCachedTechColor);
                 modelNew.cmbTechs = model.cmbTechs;
                 this.initPage(modelNew);
                 this.initEvents(modelNew);
@@ -191,6 +198,14 @@ export default class RESViewer {
 
         this.sankeySize(model);
         Chart.RESChart($div, model);
+        this.renderSectorLegend(model); // update legend to match sectors present in current diagram
+    }
+
+    // Collects TechIds from the current diagram and delegates to the shared legend renderer.
+    // Re-called after every Sankey re-render so the legend reflects filtered/drilled-down views.
+    static renderSectorLegend(model) {
+        const techIds = (model.RES.Techs || []).map(function (obj) { return obj.TechId; });
+        renderSectorLegend('sectorLegend', techIds, model.techData, model.commData, model.sectorRules);
     }
 
     static initEvents(model) {
@@ -220,18 +235,19 @@ export default class RESViewer {
             settings.Desc = $("#useDesc").is(":checked");
             //console.log('model.selectedTechs ', model.selectedTechs)
       
-            let modelNew = new Model(model.casename, model.genData, model.DemandComms, settings, model.selectedTechs);
+            let modelNew = new Model(model.casename, model.genData, model.DemandComms, settings, model.sectorRules, model.selectedTechs, getCachedTechColor);
 
             //console.log('modelNew ', modelNew)
             Html.ResStats(modelNew);
             RESViewer.sankeySize(modelNew);
             Chart.RESChart($div, modelNew);
+            RESViewer.renderSectorLegend(modelNew);
             Message.loaderEnd();
         });
 
         $("#undoSankey").off('click');
-        $("#undoSankey").on('click', function (e) {  
-            Message.loaderStart('Undo RES...'); 
+        $("#undoSankey").on('click', function (e) {
+            Message.loaderStart('Undo RES...');
 
             let settings = {};
             settings.Colors = $("#useColors").is(":checked");
@@ -240,12 +256,12 @@ export default class RESViewer {
             model.selectedTechs.pop();
 
             // console.log('model.selectedTechs ', model.selectedTechs)
-      
-            let modelNew = new Model(model.casename, model.genData, model.DemandComms, settings, model.selectedTechs);
+
+            let modelNew = new Model(model.casename, model.genData, model.DemandComms, settings, model.sectorRules, model.selectedTechs, getCachedTechColor);
 
             //update drop down liste tehnologija
             $.each(modelNew.RES.Techs, function (id, obj) {
-                if(model.selectedTechs.includes(obj.TechId)){ 
+                if(model.selectedTechs.includes(obj.TechId)){
                     obj.$checked = true;
                 }
                 else{
@@ -258,6 +274,7 @@ export default class RESViewer {
             Html.ResStats(modelNew);
             RESViewer.sankeySize(modelNew);
             Chart.RESChart($div, modelNew);
+            RESViewer.renderSectorLegend(modelNew);
             Message.loaderEnd();
         });
 
@@ -267,11 +284,12 @@ export default class RESViewer {
             let settings = {};
             settings.Colors = $("#useColors").is(":checked");
             settings.Desc = $("#useDesc").is(":checked");
-            let modelNew = new Model(model.casename, model.genData, model.DemandComms, settings);
+            let modelNew = new Model(model.casename, model.genData, model.DemandComms, settings, model.sectorRules, null, getCachedTechColor);
             model.cmbTechs.itemsSource = modelNew.RES.Techs;
             Html.ResStats(modelNew);
             RESViewer.sankeySize(modelNew);
             Chart.RESChart($div, modelNew);
+            RESViewer.renderSectorLegend(modelNew);
             Message.loaderEnd();
         });
 
@@ -356,23 +374,23 @@ export default class RESViewer {
                 settings.Colors = $("#useColors").is(":checked");
                 settings.Desc = $("#useDesc").is(":checked");
     
-                let modelNew = new Model(model.casename, model.genData, model.DemandComms, settings, model.selectedTechs);
-            
-    
+                let modelNew = new Model(model.casename, model.genData, model.DemandComms, settings, model.sectorRules, model.selectedTechs, getCachedTechColor);
+
                 $.each(modelNew.RES.Techs, function (id, obj) {
-                    if(model.selectedTechs.includes(obj.TechId)){ 
+                    if(model.selectedTechs.includes(obj.TechId)){
                         obj.$checked = true;
                     }
                     else{
                         obj.$checked = false;
                     }
                 });
-    
+
                 model.cmbTechs.itemsSource = modelNew.RES.Techs;
-    
+
                 Html.ResStats(modelNew);
                 RESViewer.sankeySize(modelNew);
                 Chart.RESChart($div, modelNew);
+                RESViewer.renderSectorLegend(modelNew);
 
             }
             Message.resMessage(msg)
