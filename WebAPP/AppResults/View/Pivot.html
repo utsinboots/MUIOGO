@@ -35,8 +35,8 @@
 							</div>
 							
 							<div class="btn-group pull-right">
-								<button type="button" class="btn btn-white btn-default" id="pngExport" data-toggle="tooltip"
-									data-placement="top" title="Export png">
+								<button type="button" class="btn btn-white btn-default" id="svgExport" data-toggle="tooltip"
+									data-placement="top" title="Export SVG">
 									<i class="ace-icon fa fa-file-image-o fa-lg default"></i>
 								</button>
 							</div>
@@ -75,8 +75,16 @@
 		<div id="pivotPanel"></div>
 	</div>
 	<div class="col-md-10" id="pivotControls">
-		<div id="cmbChartType" style="width: 150px;"></div>
-		<div id="cmbStackedChart" style="width: 150px;"></div>
+		<label class="sr-only" for="cmbChartType">Chart type</label>
+		<select id="cmbChartType" class="form-control pivot-chart-select"></select>
+		<label class="sr-only" for="cmbStackedChart">Stacking</label>
+		<select id="cmbStackedChart" class="form-control pivot-chart-select">
+			<option value="normal">Stacked</option>
+			<option value="percent">Stacked 100%</option>
+			<option value="none">None</option>
+		</select>
+		<label class="sr-only" for="cmbPieSeries">Pie series</label>
+		<select id="cmbPieSeries" class="form-control pivot-chart-select" hidden></select>
 		<!-- <div id="showLegend" style="width: 150px;"></div> -->
 
 		<div class="wj-labeled-input pull-right">
@@ -94,7 +102,7 @@
 			<label for="showColumnTotals">Show Column Totals</label>
 		</div>
 
-		<div id="pivotChart"></div>
+		<div id="pivotChart" role="img" aria-label="Results chart"></div>
 	</div>
 </div>
 <div class="row">

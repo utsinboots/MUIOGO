@@ -8,7 +8,284 @@ import { MessageSelect } from "../../App/Controller/MessageSelect.js"
 import { DataModelResult } from "../../Classes/DataModelResult.Class.js";
 import { DefaultObj } from "../../Classes/DefaultObj.Class.js";
 
+const ECHARTS_URL = 'References/echarts/echarts-6.1.0.min.js';
+
 export default class Pivot {
+    static loadECharts() {
+        if (window.echarts) return Promise.resolve(window.echarts);
+        return new Promise((resolve, reject) => {
+            let script = document.getElementById('ogc-echarts-runtime');
+            if (script) {
+                script.addEventListener('load', () => resolve(window.echarts), { once: true });
+                script.addEventListener('error', () => reject('Charts could not be loaded.'), { once: true });
+                return;
+            }
+            script = document.createElement('script');
+            script.id = 'ogc-echarts-runtime';
+            script.src = ECHARTS_URL;
+            script.async = true;
+            script.addEventListener('load', () => resolve(window.echarts), { once: true });
+            script.addEventListener('error', () => {
+                script.remove();
+                reject('Charts could not be loaded.');
+            }, { once: true });
+            document.head.appendChild(script);
+        });
+    }
+
+    static plainText(value) {
+        const superscript = { '0':'⁰', '1':'¹', '2':'²', '3':'³', '4':'⁴', '5':'⁵', '6':'⁶', '7':'⁷', '8':'⁸', '9':'⁹', '+':'⁺', '-':'⁻' };
+        const element = document.createElement('div');
+        element.innerHTML = (value == null ? '' : String(value)).replace(/<sup>(.*?)<\/sup>/gi, (_, text) =>
+            [...text].map(character => superscript[character] || character).join(''));
+        return element.textContent || '';
+    }
+
+    // Organize pivot results into categories and series for chart rendering
+    static getChartModel(app) {
+        const items = app.engine.pivotView.items || [];
+        const categoryValues = [];
+        const categoryIndexes = new Map();
+        const series = [];
+        const seriesIndexes = new Map();
+
+        items.forEach(item => {
+            Object.keys(item).filter(binding => binding != '$rowKey').forEach(binding => {
+                const keys = app.engine.getKeys(item, binding);
+                const rowValues = keys && keys.rowKey ? keys.rowKey.values : [];
+                const columnValues = keys && keys.colKey ? keys.colKey.values : [];
+
+                if (app.engine.rowFields.length && rowValues.length != app.engine.rowFields.length) return;
+                if (app.engine.columnFields.length && columnValues.length != app.engine.columnFields.length) return;
+
+                const categoryKey = JSON.stringify(rowValues);
+                let categoryIndex = categoryIndexes.get(categoryKey);
+                if (categoryIndex == null) {
+                    categoryIndex = categoryValues.length;
+                    categoryIndexes.set(categoryKey, categoryIndex);
+                    categoryValues.push(rowValues.map(value => Pivot.plainText(value)));
+                    series.forEach(itemSeries => itemSeries.values.push(null));
+                }
+
+                let seriesIndex = seriesIndexes.get(binding);
+                if (seriesIndex == null) {
+                    const fallback = app.engine.valueFields.length ? app.engine.valueFields[0].header : 'Value';
+                    seriesIndex = series.length;
+                    seriesIndexes.set(binding, seriesIndex);
+                    series.push({
+                        name: Pivot.plainText(columnValues.join(' - ')) || fallback,
+                        values: Array(categoryValues.length).fill(null)
+                    });
+                }
+
+                const rawValue = item[binding];
+                const value = rawValue == null ? null : Number(rawValue);
+                series[seriesIndex].values[categoryIndex] = Number.isFinite(value) ? value : null;
+            });
+        });
+
+        const rowFieldNames = Array.from(app.engine.rowFields).map(field => field.header);
+        const displayedFields = rowFieldNames.map((_, index) => index)
+            .filter(index => rowFieldNames[index] != 'Case');
+        if (!displayedFields.length && rowFieldNames.length) displayedFields.push(rowFieldNames.length - 1);
+        const categories = categoryValues.map(values => values.join(' - ') || 'Value');
+        const categoryLabels = categoryValues.map(values =>
+            displayedFields.map(index => values[index]).join(' - ') || 'Value');
+
+        return { categories, categoryLabels, series };
+    }
+
+    static getPercentSeries(series) {
+        if (!series.length) return [];
+        const totals = series[0].values.map((_, index) => series.reduce((sum, current) => {
+            const value = current.values[index];
+            return sum + (value == null ? 0 : Math.abs(value));
+        }, 0));
+        return series.map(itemSeries => ({
+            name: itemSeries.name,
+            values: itemSeries.values.map((value, index) => {
+                if (value == null) return null;
+                return totals[index] ? value / totals[index] * 100 : 0;
+            })
+        }));
+    }
+
+    static getDecimalPlaces(format) {
+        const match = String(format || '').match(/n(\d+)/i);
+        return match ? Number(match[1]) : 2;
+    }
+
+    static formatChartValue(value, model, percent = false) {
+        if (value == null || value === '' || !Number.isFinite(Number(value))) return '';
+        const formatted = Number(value).toLocaleString(undefined, {
+            minimumFractionDigits: Pivot.getDecimalPlaces(model.stgDecimalPoints),
+            maximumFractionDigits: Pivot.getDecimalPlaces(model.stgDecimalPoints)
+        });
+        return percent ? `${formatted}%` : formatted;
+    }
+
+    static formatAxisTooltip(params, model, percent) {
+        const items = Array.isArray(params) ? params : [params];
+        if (!items.length) return '';
+        const lines = [Pivot.plainText(items[0].axisValueLabel || items[0].name)];
+        items.forEach(item => {
+            const value = Array.isArray(item.value) ? item.value[item.value.length - 1] : item.value;
+            lines.push(`${item.marker}${Pivot.plainText(item.seriesName)}: ${Pivot.formatChartValue(value, model, percent)}`);
+        });
+        return lines.join('<br>');
+    }
+
+    static updatePieSeriesControl(app, series) {
+        const control = document.getElementById('cmbPieSeries');
+        if (!control) return;
+        control.hidden = app.pivotChart.chartType != 'pie' || series.length < 2;
+        const fallback = series.find(item => item.values.some(value => value != null && value > 0)) || series[0];
+        const selectedName = series.some(item => item.name == app.pivotChart.pieSeries) ?
+            app.pivotChart.pieSeries : (fallback ? fallback.name : '');
+        app.pivotChart.pieSeries = selectedName;
+        control.innerHTML = series.map(item => {
+            const option = document.createElement('option');
+            option.value = item.name;
+            option.textContent = item.name;
+            option.selected = item.name == selectedName;
+            return option.outerHTML;
+        }).join('');
+    }
+
+    static getChartOption(app, model) {
+        const chartModel = Pivot.getChartModel(app);
+        const chartType = app.pivotChart.chartType;
+        const percent = app.pivotChart.stacking == 'percent';
+        const chartSeries = percent ? Pivot.getPercentSeries(chartModel.series) : chartModel.series;
+        Pivot.updatePieSeriesControl(app, chartSeries);
+
+        if (chartType == 'pie') {
+            const selectedSeries = chartSeries.find(item => item.name == app.pivotChart.pieSeries) || chartSeries[0];
+            const pieData = selectedSeries ? chartModel.categories
+                .map((name, index) => ({ name, value: selectedSeries.values[index] }))
+                .filter(item => item.value != null && item.value > 0) : [];
+            return {
+                color: model.ColorSchemes.osyScheme,
+                aria: { enabled: true },
+                tooltip: {
+                    trigger: 'item',
+                    confine: true,
+                    formatter: item => `${item.marker}${Pivot.plainText(item.name)}: ${Pivot.formatChartValue(item.value, model, percent)}`
+                },
+                legend: { show: app.pivotChart.showLegend, type: 'scroll', bottom: 0 },
+                graphic: pieData.length ? [] : [{
+                    type: 'text',
+                    left: 'center',
+                    top: 'middle',
+                    style: { text: 'No positive data is available for this series.', fill: '#666' }
+                }],
+                series: selectedSeries ? [{
+                    name: selectedSeries.name,
+                    type: 'pie',
+                    center: ['50%', '50%'],
+                    radius: ['25%', '65%'],
+                    avoidLabelOverlap: true,
+                    label: { show: true, position: 'outside', distanceToLabelLine: 3 },
+                    labelLine: { show: true, length: 12, length2: 8 },
+                    emphasis: { scale: true, scaleSize: 15 },
+                    stillShowZeroSum: false,
+                    data: pieData
+                }] : []
+            };
+        }
+
+        const horizontal = chartType == 'bar';
+        const itemTooltip = chartType == 'column' || chartType == 'bar';
+        const type = itemTooltip ? 'bar' : chartType == 'area' ? 'line' : chartType;
+        const categoryAxis = {
+            type: 'category',
+            data: chartModel.categories,
+            axisLabel: { hideOverlap: true, formatter: (_, index) => chartModel.categoryLabels[index] }
+        };
+        const axisValue = {
+            type: 'value',
+            axisLabel: { formatter: value => Pivot.formatChartValue(value, model, percent) }
+        };
+
+        return {
+            color: model.ColorSchemes.osyScheme,
+            aria: { enabled: true },
+            tooltip: {
+                trigger: itemTooltip ? 'item' : 'axis',
+                confine: true,
+                extraCssText: 'max-width: 320px; max-height: 70%; overflow-y: auto;',
+                formatter: params => {
+                    if (!itemTooltip) return Pivot.formatAxisTooltip(params, model, percent);
+                    const value = Array.isArray(params.value) ? params.value[params.value.length - 1] : params.value;
+                    return `${params.marker}${Pivot.plainText(params.seriesName)}<br>` +
+                        `${Pivot.plainText(params.name)}: ${Pivot.formatChartValue(value, model, percent)}`;
+                }
+            },
+            legend: { show: app.pivotChart.showLegend, type: 'scroll', bottom: 0 },
+            grid: { top: 35, right: 30, bottom: 80, left: 75, containLabel: true },
+            xAxis: horizontal ? axisValue : categoryAxis,
+            yAxis: horizontal ? categoryAxis : axisValue,
+            series: chartSeries.map(itemSeries => ({
+                name: itemSeries.name,
+                type,
+                data: itemSeries.values,
+                stack: app.pivotChart.stacking == 'none' ? undefined : 'results',
+                areaStyle: chartType == 'area' ? {} : undefined,
+                connectNulls: false,
+                emphasis: { focus: 'series' }
+            }))
+        };
+    }
+
+    static renderChart(app, model) {
+        if (Pivot.activeApp != app || !window.echarts) return;
+        const host = document.getElementById('pivotChart');
+        if (!host) return;
+        const option = Pivot.getChartOption(app, model);
+
+        if (!option.series.length) {
+            Pivot.disposeChart();
+            host.textContent = 'No chart data is available for this view.';
+            host.classList.add('pivot-chart-empty');
+            return;
+        }
+
+        host.classList.remove('pivot-chart-empty');
+        if (!Pivot.chart || Pivot.chart.isDisposed()) {
+            host.textContent = '';
+            Pivot.chart = window.echarts.init(host, null, { renderer: 'svg' });
+        }
+        Pivot.chart.setOption(option, true);
+        Pivot.chart.resize();
+    }
+
+    static disposeChart() {
+        if (Pivot.chart && !Pivot.chart.isDisposed()) Pivot.chart.dispose();
+        Pivot.chart = null;
+    }
+
+    static bindChartLifecycle(app) {
+        $(window).off('.muiopivot');
+        $(window).on('resize.muiopivot', () => {
+            if (Pivot.chart && !Pivot.chart.isDisposed()) Pivot.chart.resize();
+        });
+        $(window).on('hashchange.muiopivot', () => {
+            if (window.location.hash == '#/Pivot') return;
+            Pivot.disposeChart();
+            if (Pivot.activeApp == app) Pivot.activeApp = null;
+            $(window).off('.muiopivot');
+        });
+    }
+
+    static exportChart(model) {
+        if (!Pivot.chart || Pivot.chart.isDisposed()) return;
+        const safeName = `${model.casename}-${model.param}`.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
+        const link = document.createElement('a');
+        link.download = `muiogo-${safeName}.svg`;
+        link.href = Pivot.chart.getDataURL({ type: 'svg', pixelRatio: 2, backgroundColor: '#ffffff' });
+        link.click();
+    }
+
     static onLoad() {
         Base.getSession()
             .then(response => {
@@ -171,67 +448,14 @@ export default class Pivot {
         //     </div>  
         // </div>`;
 
-        // let oldFun = wjChart._SvgRenderEngine.prototype._setText;
-        wijmo.chart._SvgRenderEngine.prototype._setText = function (svgTextElement, textString) {
-            // Clear the existing content of the SVG text element
-            svgTextElement.textContent = '';
-        
-            // Create a temporary div element to parse and render the HTML
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = textString;
-            // Iterate through child nodes of the temporary div
-            for (const node of tempDiv.childNodes) {
-                if (
-                    node.nodeType === Node.ELEMENT_NODE &&
-                    node.tagName.toLowerCase() != 'sup' &&
-                    node.childNodes.length > 0
-                ) {
-                    this._setText(svgTextElement, node.innerHTML);
-                }
-                if (node.nodeType === Node.TEXT_NODE) {
-                    // If it's a text node, create a new tspan element
-                    const tspan = document.createElementNS(
-                    'http://www.w3.org/2000/svg',
-                    'tspan'
-                    );
-                    tspan.textContent = node.textContent;
-                    svgTextElement.appendChild(tspan);
-                } else if (node.nodeType === Node.ELEMENT_NODE) {
-                    // If it's an element, handle specific cases (e.g., superscript)
-                    if (node.tagName.toLowerCase() === 'sup') {
-                    const tspanSup = document.createElementNS(
-                        'http://www.w3.org/2000/svg',
-                        'tspan'
-                    );
-                    tspanSup.setAttribute('baseline-shift', 'super');
-                    tspanSup.textContent = node.textContent;
-            
-                    // Create a new tspan for the entire superscript
-                    const tspan = document.createElementNS(
-                        'http://www.w3.org/2000/svg',
-                        'tspan'
-                    );
-                    tspan.appendChild(tspanSup);
-                    svgTextElement.appendChild(tspan);
-                    } else {
-                    // For other elements, clone and append them directly to the SVG text element
-                    const clonedNode = node.cloneNode(true);
-                    svgTextElement.appendChild(clonedNode);
-                    }
-                }
-            }
-        };
-
         //kada mjenjamo case, assertation problem sa wijmo kontrolama
         if(model.refreshPage){      
             wijmo.olap.PivotPanel.disposeAll('#pivotPanel');
             wijmo.olap.PivotGrid.disposeAll('#pivotGrid');
-            wijmo.olap.PivotChart.disposeAll('#pivotChart');
-            wijmo.input.ComboBox.disposeAll('#cmbChartType');
-            wijmo.input.ComboBox.disposeAll('#cmbStackedChart');
             wijmo.input.ComboBox.disposeAll('#cmbViews');
             wijmo.input.AutoComplete.disposeAll('#cmbParams');
         }
+        Pivot.disposeChart();
 
         // function parseHtmlData(data){
         //     let props = ['Unit'];
@@ -321,22 +545,9 @@ export default class Pivot {
             showSelectedHeaders: 'All',  
         });
 
-        app.pivotChart = new wijmo.olap.PivotChart('#pivotChart', {
-            //header: 'Country GDP',
-            itemsSource: app.engine,
-            showTitle: false,
-            legendPosition: 4,
-            stacking: "Stacked"
-        });
-
-        //app.pivotChart.dataLabel.position = 'Top';
-        // app.pivotChart.flexChart.palette = wijmo.chart.Palettes.midnight
-        app.pivotChart.flexChart.palette = model.ColorSchemes.osyScheme;
-
-        // app.pivotChart.flexChart.axisX.itemFormatter = function (engine, label) {
-        //     label.text = wijmo.toPlainText(label.text);
-        //     return label;
-        // };
+        app.pivotChart = { header: '', chartType: 'column', stacking: 'normal', showLegend: true, pieSeries: '' };
+        Pivot.activeApp = app;
+        app.engine.updatedView.addHandler(() => Pivot.renderChart(app, model));
 
         // app.cmbParams = new wijmo.input.AutoComplete('#cmbParams', {
         app.cmbParams = new wijmo.input.ComboBox('#cmbParams', {
@@ -353,24 +564,19 @@ export default class Pivot {
             }
         });
 
-        app.cmbChartType = new wijmo.input.ComboBox('#cmbChartType', {
-            itemsSource: model.ChartTypes,
-            displayMemberPath: 'name',
-            selectedValuePath: 'value',
-            selectedIndexChanged: function (s, e) {      
-                if(s.selectedValue == 1){
-                    app.pivotChart.rotated = 1;
-                }
-                app.pivotChart.chartType = s.selectedValue;
-            }
+        $('#cmbChartType').html(model.ChartTypes.map(type =>
+            `<option value="${type.value}">${type.name}</option>`).join(''));
+        $('#cmbChartType').off('change').on('change', function () {
+            app.pivotChart.chartType = this.value;
+            Pivot.renderChart(app, model);
         });
-
-        app.cmbStackedChart  = new wijmo.input.ComboBox('#cmbStackedChart', {
-            itemsSource: 'Stacked,Stacked100pc,None'.split(','),
-            selectedIndexChanged: function(s, e) {
-                //console.log(s, e)
-                app.pivotChart.stacking = s.text;
-            }
+        $('#cmbStackedChart').off('change').on('change', function () {
+            app.pivotChart.stacking = this.value;
+            Pivot.renderChart(app, model);
+        });
+        $('#cmbPieSeries').off('change').on('change', function () {
+            app.pivotChart.pieSeries = this.value;
+            Pivot.renderChart(app, model);
         });
 
         app.cmbViews = new wijmo.input.ComboBox('#cmbViews', {
@@ -383,6 +589,14 @@ export default class Pivot {
                 }   
             }
         });
+
+        Pivot.loadECharts()
+            .then(() => {
+                if (Pivot.activeApp != app) return;
+                Pivot.bindChartLifecycle(app);
+                Pivot.renderChart(app, model);
+            })
+            .catch(error => Message.dangerOsy(error));
 
         this.initEvents(model, app);
     }
@@ -523,9 +737,9 @@ export default class Pivot {
             book.save('PivotGrid.xlsx');
         });
         
-        $("#pngExport").off('click');
-        $('#pngExport').on('click', function () {
-            app.pivotChart.saveImageToFile('FlexChart.png');
+        $("#svgExport").off('click');
+        $('#svgExport').on('click', function () {
+            Pivot.exportChart(model);
         });
 
         $("#showRowTotals").off('click');
@@ -542,8 +756,8 @@ export default class Pivot {
 
         $("#hideLegend").off('click');
         $("#hideLegend").click(function (e) {
-            app.pivotChart.showLegend = e.target.checked ?
-                'Never' : 'Auto';
+            app.pivotChart.showLegend = !e.target.checked;
+            Pivot.renderChart(app, model);
         });
 
         $("#showLog").off('click');

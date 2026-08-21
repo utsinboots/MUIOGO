@@ -51,12 +51,12 @@ export class Model {
         let VIEWS = DataModelResult.getAllViews(VIEW['osy-views']);
 
         let ChartTypes = [
-            { name: 'Column', value: wijmo.olap.PivotChartType.Column },
-            { name: 'Bar', value: wijmo.olap.PivotChartType.Bar },
-            { name: 'Scatter', value: wijmo.olap.PivotChartType.Scatter },
-            { name: 'Line', value: wijmo.olap.PivotChartType.Line },
-            { name: 'Area', value: wijmo.olap.PivotChartType.Area },
-            { name: 'Pie', value: wijmo.olap.PivotChartType.Pie },
+            { name: 'Column', value: 'column' },
+            { name: 'Bar', value: 'bar' },
+            { name: 'Scatter', value: 'scatter' },
+            { name: 'Line', value: 'line' },
+            { name: 'Area', value: 'area' },
+            { name: 'Pie', value: 'pie' },
         ];
 
         var colorSchemes = 
