@@ -842,6 +842,28 @@ li {
     border: 1px solid #e4e4e4; 
     /* background: 0 0; */
 }
+.pivot-chart-select {
+    display: inline-block;
+    width: 150px;
+    margin: 0 5px 10px 0;
+}
+.pivot-chart-select[hidden] {
+    display: none;
+}
+#pivotChart {
+    box-sizing: border-box;
+    width: 100%;
+    height: 470px;
+    padding: 15px 10px;
+    background: #fff;
+    border: 1px solid #e4e4e4;
+}
+.pivot-chart-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+}
 .wj-pivotpanel {
     min-height: 500px!important;
     /* background: 0 0!important; */
