@@ -7,6 +7,7 @@ import { DEF } from "../../Classes/Definition.Class.js";
 import { MessageSelect } from "../../App/Controller/MessageSelect.js"
 import { DataModelResult } from "../../Classes/DataModelResult.Class.js";
 import { DefaultObj } from "../../Classes/DefaultObj.Class.js";
+import { TempResultParityChecker } from "../../Classes/TempResultParityChecker.Class.js";
 
 const ECHARTS_URL = 'References/echarts/echarts-6.1.0.min.js';
 
@@ -547,7 +548,15 @@ export default class Pivot {
 
         app.pivotChart = { header: '', chartType: 'column', stacking: 'normal', showLegend: true, pieSeries: '' };
         Pivot.activeApp = app;
-        app.engine.updatedView.addHandler(() => Pivot.renderChart(app, model));
+        app.engine.updatedView.addHandler(() => {
+            Pivot.renderChart(app, model);
+            // TEMPORARY MIGRATION CHECK (#527): Remove this call and its import after approved Wijmo parity fixtures pass.
+            TempResultParityChecker.run(app.engine, model.pivotData, {
+                case: model.casename,
+                group: model.group,
+                param: model.param
+            });
+        });
 
         // app.cmbParams = new wijmo.input.AutoComplete('#cmbParams', {
         app.cmbParams = new wijmo.input.ComboBox('#cmbParams', {
