@@ -7,7 +7,10 @@ import { DEF } from "../../Classes/Definition.Class.js";
 import { MessageSelect } from "../../App/Controller/MessageSelect.js"
 import { DataModelResult } from "../../Classes/DataModelResult.Class.js";
 import { DefaultObj } from "../../Classes/DefaultObj.Class.js";
+import { ResultAggregator } from "../../Classes/ResultAggregator.Class.js";
+import { ResultGrid } from "../../Classes/ResultGrid.Class.js";
 import { TempResultParityChecker } from "../../Classes/TempResultParityChecker.Class.js";
+import { WijmoResultAdapter } from "../../Classes/WijmoResultAdapter.Class.js";
 
 const ECHARTS_URL = 'References/echarts/echarts-6.1.0.min.js';
 
@@ -93,7 +96,86 @@ export default class Pivot {
         const categoryLabels = categoryValues.map(values =>
             displayedFields.map(index => values[index]).join(' - ') || 'Value');
 
-        return { categories, categoryLabels, series };
+        // rowFields and categoryTuples drive the grouped axis: the innermost field labels each bar.
+        return { categories, categoryLabels, series, rowFields: rowFieldNames, categoryTuples: categoryValues };
+    }
+
+    // Category axis: the innermost field labels each bar, outer fields become nested bracket axes.
+    static getCategoryAxis(chartModel, horizontal) {
+        const tuples = chartModel.categoryTuples || [];
+        const fieldCount = (chartModel.rowFields || []).length;
+        const leafIndex = fieldCount - 1;
+        const leafRotated = fieldCount >= 3;
+        const leafAxis = {
+            type: 'category',
+            data: chartModel.categories,
+            axisLabel: {
+                hideOverlap: true,
+                rotate: leafRotated ? 90 : 0,
+                formatter: (_, index) => {
+                    const tuple = tuples[index] || [];
+                    const value = leafIndex >= 0 ? tuple[leafIndex] : null;
+                    return Pivot.plainText(value != null && value !== '' ? value : chartModel.categoryLabels[index]);
+                }
+            }
+        };
+        if (fieldCount < 2 || tuples.length != chartModel.categories.length) return leafAxis;
+
+        const leafHeight = leafRotated ? 46 : 24;
+        const step = 22;
+        const axes = [leafAxis];
+        for (let field = 0; field < leafIndex; field++) {
+            // A bracket starts wherever this field or any outer field changes value.
+            const starts = [];
+            tuples.forEach((tuple, index) => {
+                if (index == 0) { starts.push(index); return; }
+                const previous = tuples[index - 1] || [];
+                for (let outer = 0; outer <= field; outer++) {
+                    if (previous[outer] != tuple[outer]) { starts.push(index); return; }
+                }
+            });
+            const midLabel = new Map();
+            starts.forEach((start, groupIndex) => {
+                const end = (groupIndex + 1 < starts.length ? starts[groupIndex + 1] : tuples.length) - 1;
+                midLabel.set(Math.floor((start + end) / 2), Pivot.plainText((tuples[start] || [])[field]));
+            });
+            const boundaries = new Set(starts);
+            const rank = leafIndex - field;
+            axes.push({
+                type: 'category',
+                data: chartModel.categories,
+                position: horizontal ? 'left' : 'bottom',
+                offset: horizontal ? rank * 70 : leafHeight + (rank - 1) * step,
+                // Dividers at each boundary, no continuous axis line: a line would join every group.
+                axisLine: { show: false },
+                axisTick: {
+                    show: true,
+                    alignWithLabel: false,
+                    length: step,
+                    interval: index => boundaries.has(index),
+                    lineStyle: { color: '#c4cad4' }
+                },
+                axisLabel: {
+                    interval: 0,
+                    hideOverlap: true,
+                    fontSize: 10,
+                    color: '#333',
+                    formatter: (_, index) => midLabel.get(index) || ''
+                }
+            });
+        }
+        return axes;
+    }
+
+    // Reserve room under the plot for the full legend; it grows with the number of series.
+    static getLegendHeight(series) {
+        const host = document.getElementById('pivotChart');
+        const width = host && host.clientWidth ? host.clientWidth : 1200;
+        const longest = series.reduce((count, item) => Math.max(count, String(item.name || '').length), 8);
+        const entryWidth = 26 + longest * 6.5;
+        const perRow = Math.max(1, Math.floor(width / entryWidth));
+        const rows = Math.max(1, Math.ceil(series.length / perRow));
+        return Math.min(rows, 8) * 16 + 4;
     }
 
     static getPercentSeries(series) {
@@ -173,7 +255,18 @@ export default class Pivot {
                     confine: true,
                     formatter: item => `${item.marker}${Pivot.plainText(item.name)}: ${Pivot.formatChartValue(item.value, model, percent)}`
                 },
-                legend: { show: app.pivotChart.showLegend, type: 'scroll', bottom: 0 },
+                legend: {
+                show: app.pivotChart.showLegend,
+                // List every entry under the chart with small square chips instead of paging.
+                type: 'plain',
+                bottom: 0,
+                selectedMode: false,
+                icon: 'rect',
+                itemWidth: 10,
+                itemHeight: 10,
+                itemGap: 12,
+                textStyle: { fontSize: 11 }
+            },
                 graphic: pieData.length ? [] : [{
                     type: 'text',
                     left: 'center',
@@ -198,11 +291,10 @@ export default class Pivot {
         const horizontal = chartType == 'bar';
         const itemTooltip = chartType == 'column' || chartType == 'bar';
         const type = itemTooltip ? 'bar' : chartType == 'area' ? 'line' : chartType;
-        const categoryAxis = {
-            type: 'category',
-            data: chartModel.categories,
-            axisLabel: { hideOverlap: true, formatter: (_, index) => chartModel.categoryLabels[index] }
-        };
+        const categoryAxis = Pivot.getCategoryAxis(chartModel, horizontal);
+        const grouped = Array.isArray(categoryAxis);
+        const levels = grouped ? categoryAxis.length - 1 : 0;
+        const legendHeight = app.pivotChart.showLegend ? Pivot.getLegendHeight(chartSeries) : 12;
         const axisValue = {
             type: 'value',
             axisLabel: { formatter: value => Pivot.formatChartValue(value, model, percent) }
@@ -222,8 +314,26 @@ export default class Pivot {
                         `${Pivot.plainText(params.name)}: ${Pivot.formatChartValue(value, model, percent)}`;
                 }
             },
-            legend: { show: app.pivotChart.showLegend, type: 'scroll', bottom: 0 },
-            grid: { top: 35, right: 30, bottom: 80, left: 75, containLabel: true },
+            legend: {
+                show: app.pivotChart.showLegend,
+                // List every entry under the chart with small square chips instead of paging.
+                type: 'plain',
+                bottom: 0,
+                selectedMode: false,
+                icon: 'rect',
+                itemWidth: 10,
+                itemHeight: 10,
+                itemGap: 12,
+                textStyle: { fontSize: 11 }
+            },
+            grid: {
+                top: 35,
+                right: 30,
+                // containLabel covers the axis labels; only the offset group levels need extra space.
+                bottom: legendHeight + (!horizontal && grouped ? levels * 22 + 6 : 6),
+                left: horizontal && grouped ? 75 + levels * 60 : 75,
+                containLabel: true
+            },
             xAxis: horizontal ? axisValue : categoryAxis,
             yAxis: horizontal ? categoryAxis : axisValue,
             series: chartSeries.map(itemSeries => ({
@@ -265,6 +375,32 @@ export default class Pivot {
         Pivot.chart = null;
     }
 
+    // Refresh the open-source grid from the same active layout used by the Wijmo panel.
+    static renderResultGrid(app, model) {
+        const configuration = WijmoResultAdapter.configuration(app.engine, model.pivotData);
+        app.resultConfiguration = configuration;
+        app.aggregateResult = ResultAggregator.aggregate(model.pivotData, configuration);
+        const valueField = Array.from(app.engine.valueFields)[0];
+        app.resultGrid.render(app.aggregateResult, valueField ? valueField.format : model.stgDecimalPoints);
+    }
+
+    // Render each Results output only after the active layout has finished updating.
+    static renderResults(app, model) {
+        if (Pivot.activeApp != app || app.updatingParam) return;
+        Pivot.renderResultGrid(app, model);
+        Pivot.renderChart(app, model);
+        // TEMPORARY MIGRATION CHECK (#527): Remove after approved Wijmo parity fixtures pass.
+        TempResultParityChecker.run(app.engine, model.pivotData, {
+            case: model.casename,
+            group: model.group,
+            param: model.param
+        });
+    }
+
+    static disposeResultGrid(app = Pivot.activeApp) {
+        if (app && app.resultGrid) app.resultGrid.destroy();
+    }
+
     static bindChartLifecycle(app) {
         $(window).off('.muiopivot');
         $(window).on('resize.muiopivot', () => {
@@ -273,6 +409,7 @@ export default class Pivot {
         $(window).on('hashchange.muiopivot', () => {
             if (window.location.hash == '#/Pivot') return;
             Pivot.disposeChart();
+            Pivot.disposeResultGrid(app);
             if (Pivot.activeApp == app) Pivot.activeApp = null;
             $(window).off('.muiopivot');
         });
@@ -281,6 +418,7 @@ export default class Pivot {
     static exportChart(model) {
         if (!Pivot.chart || Pivot.chart.isDisposed()) return;
         const safeName = `${model.casename}-${model.param}`.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
+        // The on-screen legend already lists every entry, so the chart captures as it appears.
         const link = document.createElement('a');
         link.download = `muiogo-${safeName}.svg`;
         link.href = Pivot.chart.getDataURL({ type: 'svg', pixelRatio: 2, backgroundColor: '#ffffff' });
@@ -452,7 +590,7 @@ export default class Pivot {
         //kada mjenjamo case, assertation problem sa wijmo kontrolama
         if(model.refreshPage){      
             wijmo.olap.PivotPanel.disposeAll('#pivotPanel');
-            wijmo.olap.PivotGrid.disposeAll('#pivotGrid');
+            Pivot.disposeResultGrid();
             wijmo.input.ComboBox.disposeAll('#cmbViews');
             wijmo.input.AutoComplete.disposeAll('#cmbParams');
         }
@@ -540,23 +678,39 @@ export default class Pivot {
         // pivotEngine.refresh();
 
 
-        app.pivotGrid = new wijmo.olap.PivotGrid('#pivotGrid', {
-            itemsSource: app.engine,
-            collapsibleSubtotals: true,
-            showSelectedHeaders: 'All',  
+        app.resultGrid = new ResultGrid('#pivotGrid', {
+            plainText: value => Pivot.plainText(value),
+            getDetail: context => ResultAggregator.getDetail(
+                model.pivotData,
+                app.resultConfiguration,
+                context.rowKey,
+                context.columnKey
+            ),
+            removeField: fieldName => {
+                const field = Array.from(app.engine.fields).find(item => item.binding == fieldName) ||
+                    app.engine.fields.getField(fieldName);
+                if (field) app.engine.removeField(field);
+            },
+            editField: fieldName => {
+                const field = Array.from(app.engine.fields).find(item => item.binding == fieldName) ||
+                    app.engine.fields.getField(fieldName);
+                if (field) app.engine.editField(field);
+            },
+            // Year is the only dimension where reversing the order is meaningful for results.
+            sortableFields: ['Year'],
+            // Flip the field's direction; the engine's view update refreshes the grid and the chart.
+            toggleFieldSort: fieldName => {
+                const field = Array.from(app.engine.rowFields).find(item => item.binding == fieldName);
+                if (field) field.descending = !field.descending;
+            }
         });
-
         app.pivotChart = { header: '', chartType: 'column', stacking: 'normal', showLegend: true, pieSeries: '' };
         Pivot.activeApp = app;
         app.engine.updatedView.addHandler(() => {
-            Pivot.renderChart(app, model);
-            // TEMPORARY MIGRATION CHECK (#527): Remove this call and its import after approved Wijmo parity fixtures pass.
-            TempResultParityChecker.run(app.engine, model.pivotData, {
-                case: model.casename,
-                group: model.group,
-                param: model.param
-            });
+            Pivot.renderResults(app, model);
         });
+        Pivot.renderResults(app, model);
+        Pivot.bindChartLifecycle(app);
 
         // app.cmbParams = new wijmo.input.AutoComplete('#cmbParams', {
         app.cmbParams = new wijmo.input.ComboBox('#cmbParams', {
@@ -602,7 +756,6 @@ export default class Pivot {
         Pivot.loadECharts()
             .then(() => {
                 if (Pivot.activeApp != app) return;
-                Pivot.bindChartLifecycle(app);
                 Pivot.renderChart(app, model);
             })
             .catch(error => Message.dangerOsy(error));
@@ -735,15 +888,9 @@ export default class Pivot {
             }
         });
 
-        // NOTE: requires jszip, wijmo.xlsx, and wijmo.grid.xlsx
-        $("#xlsExport").off('click');
-        $('#xlsExport').on('click', function () {
-            var book = wijmo.grid.xlsx.FlexGridXlsxConverter.save(app.pivotGrid, {
-                includeColumnHeaders: true,
-                includeRowHeaders: true
-            });
-            book.sheets[0].name = 'PivotGrid';
-            book.save('PivotGrid.xlsx');
+        $("#csvExport").off('click');
+        $('#csvExport').on('click', function () {
+            app.resultGrid.downloadCSV('PivotGrid.csv');
         });
         
         $("#svgExport").off('click');
@@ -780,6 +927,7 @@ export default class Pivot {
     static updateParam(param, app, model, view=null){
         Message.clearMessages();
         Message.loaderStart('Preparing pivot data...')
+        app.updatingParam = true;
         model.group = model.VARGROUPS[param]['group'];
         model.param = param;
         Osemosys.getResultData(model.casename, model.group+'.json')
@@ -891,15 +1039,20 @@ export default class Pivot {
                     app.engine.fields.getField('Con Desc').isContentHtml = true;
                 }
 
+                app.updatingParam = false;
+                Pivot.renderResults(app, model);
                 Message.loaderEnd();
             }
             else{
+                app.updatingParam = false;
                 Message.dangerOsy("Results do not contain values for variable <b>"+model.VARNAMES[model.group][model.param] + "</b> please check input data and rerun the model.")
                 Message.loaderEnd();
             }
 
         })
         .catch(error => {
+            app.updatingParam = false;
+            Message.loaderEnd();
             Message.danger(error.message);
         }); 
     }

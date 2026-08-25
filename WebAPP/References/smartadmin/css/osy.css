@@ -1250,3 +1250,61 @@ jqx-menu-vertical-material .jqx-menu-item-top-selected-material, .jqx-grid-selec
 .py-9  { padding-top: 9px !important; padding-bottom: 9px !important; }
 .py-10 { padding-top: 10px !important; padding-bottom: 10px !important; }
 
+/* Keep the open-source Results grid visually aligned with the existing pivot workspace. */
+#pivotGrid.tabulator { margin-top: 10px; border: 1px solid #bdc4cf; color: #2d3340; background: #fff; font-size: 12px; }
+#pivotGrid .tabulator-header { background: #eceff3; border-bottom: 1px solid #bdc4cf; color: #3c4557; font-weight: 700; }
+#pivotGrid .tabulator-header .tabulator-col { background: #eceff3; border-right: 1px solid #d3d7de; }
+#pivotGrid .tabulator-header .tabulator-col .tabulator-col-content { padding: 7px 8px; }
+#pivotGrid .tabulator-row { min-height: 32px; background: #fff; border-bottom: 0; }
+#pivotGrid .tabulator-row:nth-child(even) { background: #fafbfc; }
+#pivotGrid .tabulator-row:hover { background: #f5f7fa; }
+#pivotGrid .tabulator-row .tabulator-cell { padding: 7px 8px; border-right: 1px solid #d4d8de; border-bottom: 1px solid #d4d8de; }
+#pivotGrid .result-grid-row-field { background: #f1f3f6; color: #303747; font-weight: 700; }
+#pivotGrid .tabulator-row .result-grid-row-field:not(.result-grid-group-last-cell) { border-bottom-color: transparent; }
+#pivotGrid .tabulator-row .result-grid-row-field.result-grid-group-first-cell { border-top: 1px solid #bdc4cf; }
+/* Separator on value cells only; on the row it would cut through the field columns. */
+#pivotGrid .result-grid-group-start .tabulator-cell:not(.result-grid-row-field) { border-top: 1px solid #bdc4cf; }
+/* Totals read as tinted grid rows/columns with the same thin rules as the body, matching Wijmo. */
+#pivotGrid .tabulator-row.result-grid-total,
+#pivotGrid .tabulator-row.result-grid-total:nth-child(even) { background: #fff; font-weight: 700; }
+/* Tint value cells only, top rule only: stacked totals would otherwise double their rules. */
+#pivotGrid .tabulator-row.result-grid-total .tabulator-cell:not(.result-grid-row-field) {
+    background: #e6f0f5;
+    border-top: 1px solid #a8bcc9;
+    border-right-color: #b9cdd9;
+}
+#pivotGrid .tabulator-row.result-grid-total .result-grid-row-field { background: #f1f3f6; }
+/* The wider a total aggregates, the heavier and darker it reads. */
+#pivotGrid .tabulator-row.result-grid-outer-total .tabulator-cell:not(.result-grid-row-field) {
+    background: #d6e6ee;
+    border-top: 1px solid #7f9bad;
+}
+#pivotGrid .tabulator-row.result-grid-grand-total .tabulator-cell:not(.result-grid-row-field) {
+    background: #c3d9e5;
+    border-top: 2px solid #5d7c8f;
+}
+#pivotGrid .tabulator-row.result-grid-grand-total .result-grid-row-field {
+    background: #e3e7ec;
+    border-top: 2px solid #5d7c8f;
+}
+#pivotGrid .result-grid-total-column { background: #eaf1f5; font-weight: 700; }
+#pivotGrid .tabulator-header .result-grid-total-column { background: #e2e8ee; }
+#pivotGrid .tabulator-row.result-grid-total .result-grid-total-column { background: #cfe2ec; }
+#pivotGrid .tabulator-row .tabulator-cell.tabulator-range-selected { background: #82adbf; color: #fff; }
+#pivotGrid .tabulator-header .tabulator-col.tabulator-range-selected { background: #39769f; color: #fff; }
+/* A selection marks only its labels; cells keep Tabulator's own range styling. */
+#pivotGrid .tabulator-row .tabulator-cell.result-grid-range-row-header { background: #628da8; color: #fff; }
+/* Range selection takes click-drag, so keep the horizontal scrollbar reachable. */
+#pivotGrid .tabulator-tableholder { overflow-x: auto; }
+#pivotGrid .tabulator-tableholder::-webkit-scrollbar { width: 12px; height: 12px; background: #eef1f5; }
+#pivotGrid .tabulator-tableholder::-webkit-scrollbar-thumb { background: #a9b2c0; border: 2px solid #eef1f5; border-radius: 6px; }
+#pivotGrid .tabulator-tableholder::-webkit-scrollbar-thumb:hover { background: #8994a3; }
+#pivotGrid .tabulator-tableholder { scrollbar-color: #a9b2c0 #eef1f5; }
+#pivotGrid .tabulator-header .result-grid-sortable .tabulator-col-content { cursor: pointer; }
+/* Selected range mirrored onto the column headers, like Wijmo's selected-header highlight. */
+#pivotGrid .tabulator-header .tabulator-col.result-grid-range-header { background: #628da8; color: #fff; }
+.tabulator-menu .fa { width: 16px; margin-right: 6px; text-align: center; }
+.result-grid-detail-dialog .modal-dialog { width: min(1100px, calc(100% - 40px)); }
+.result-grid-detail-dialog .result-grid-detail-summary { color: #4b5563; font-weight: 600; }
+.result-grid-detail-dialog .result-grid-detail-table { border: 1px solid #bdc4cf; }
+

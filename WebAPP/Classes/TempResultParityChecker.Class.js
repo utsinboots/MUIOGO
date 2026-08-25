@@ -1,4 +1,5 @@
 import { ResultAggregator } from "./ResultAggregator.Class.js";
+import { WijmoResultAdapter } from "./WijmoResultAdapter.Class.js";
 
 const PARITY_STORAGE_KEY = 'muiogo-result-aggregator-parity';
 const ABSOLUTE_TOLERANCE = 1e-10;
@@ -15,14 +16,17 @@ export class TempResultParityChecker {
     // Compare the active Wijmo view with the neutral aggregator without changing either result.
     static run(engine, items, context = {}) {
         if (!this.isEnabled()) return null;
+        if (engine.valueFields.length != 1) return null;
         const startedAt = performance.now();
         try {
-            const configuration = this.configuration(engine, items);
+            const configuration = WijmoResultAdapter.configuration(engine, items);
             const aggregateResult = ResultAggregator.aggregate(items, configuration);
             const wijmoResult = this.wijmoResult(engine);
             const report = this.compare(wijmoResult, aggregateResult, {
                 context: context,
                 configuration: configuration,
+                engine: engine,
+                items: items,
                 duration: performance.now() - startedAt
             });
             this.publish(report);
@@ -37,56 +41,6 @@ export class TempResultParityChecker {
             this.publish(report);
             return report;
         }
-    }
-
-    // Translate the active Wijmo field layout into ResultAggregator configuration.
-    static configuration(engine, items) {
-        const rowFields = Array.from(engine.rowFields).map(field => this.fieldDefinition(field));
-        const columnFields = Array.from(engine.columnFields).map(field => this.fieldDefinition(field));
-        const valueFields = Array.from(engine.valueFields);
-        if (valueFields.length != 1 || valueFields[0].binding != 'Value') {
-            throw new Error('Parity checking currently requires the MUIO Value field.');
-        }
-        if (valueFields[0].aggregate != wijmo.Aggregate.Sum || valueFields[0].showAs != wijmo.olap.ShowAs.NoCalculation) {
-            throw new Error('Parity checking currently requires Value sum with no Show As calculation.');
-        }
-        return {
-            rowFields: rowFields,
-            columnFields: columnFields,
-            valueFields: [{ field: 'Value', aggregation: 'sum' }],
-            filters: this.filters(engine, items),
-            totals: {
-                rows: this.totalMode(engine.showRowTotals),
-                columns: this.totalMode(engine.showColumnTotals)
-            }
-        };
-    }
-
-    static fieldDefinition(field) {
-        if (!field || !field.binding) throw new Error('The active Wijmo field has no source binding.');
-        return { field: field.binding, descending: field.descending === true };
-    }
-
-    // Convert every active Wijmo value or condition filter into accepted raw values.
-    static filters(engine, items) {
-        return Array.from(engine.fields).filter(field => field.filter && field.filter.isActive).map(field => {
-            const values = new Map();
-            items.forEach(item => {
-                const value = item[field.binding];
-                if (field.filter.apply(item)) {
-                    const normalized = ResultAggregator.keyValue(value);
-                    values.set(ResultAggregator.keyID([normalized]), normalized);
-                }
-            });
-            return { field: field.binding, values: Array.from(values.values()) };
-        });
-    }
-
-    static totalMode(mode) {
-        if (mode == wijmo.olap.ShowTotals.None) return ResultAggregator.ShowTotals.None;
-        if (mode == wijmo.olap.ShowTotals.GrandTotals) return ResultAggregator.ShowTotals.GrandTotals;
-        if (mode == wijmo.olap.ShowTotals.Subtotals) return ResultAggregator.ShowTotals.Subtotals;
-        throw new Error(`Unsupported Wijmo total mode: ${mode}`);
     }
 
     // Normalize Wijmo's encoded pivotView bindings into explicit result keys.
@@ -110,7 +64,9 @@ export class TempResultParityChecker {
                     columnKey: columnKey,
                     rowLevel: rowKey.length,
                     columnLevel: columnKey.length,
-                    values: { Value: value }
+                    values: { Value: value },
+                    sourceItem: item,
+                    binding: binding
                 };
                 if (rowKey.length == rowFieldCount && columnKey.length == columnFieldCount) {
                     rowKeys.set(ResultAggregator.keyID(rowKey), rowKey);
@@ -137,6 +93,7 @@ export class TempResultParityChecker {
         const columnOrderMatches = this.compareKeyOrder('column', wijmoResult.columnKeys, aggregateResult.columnKeys, mismatches);
         const regular = this.compareCells('cell', wijmoResult.cells, aggregateResult.cells, mismatches);
         const total = this.compareCells('total', wijmoResult.totals, aggregateResult.totals.cells, mismatches);
+        const detail = this.compareDetails(wijmoResult, options, mismatches);
         return {
             status: mismatches.count ? 'FAIL' : 'PASS',
             context: options.context,
@@ -147,11 +104,56 @@ export class TempResultParityChecker {
             aggregatorCells: aggregateResult.cells.length,
             wijmoTotals: wijmoResult.totals.length,
             aggregatorTotals: aggregateResult.totals.cells.length,
+            detailSamples: detail.samples,
+            wijmoDetailRecords: detail.wijmoRecords,
+            aggregatorDetailRecords: detail.aggregatorRecords,
             maximumAbsoluteDifference: Math.max(regular.maximumAbsoluteDifference, total.maximumAbsoluteDifference),
             mismatchCount: mismatches.count,
             differences: mismatches.items,
             durationMilliseconds: options.duration
         };
+    }
+
+    // Compare representative regular and total cells against Wijmo's detail lookup.
+    static compareDetails(wijmoResult, options, mismatches) {
+        const samples = this.detailSamples(wijmoResult.cells).concat(this.detailSamples(wijmoResult.totals));
+        const itemIndexes = new Map(options.items.map((item, index) => [item, index]));
+        let wijmoRecords = 0;
+        let aggregatorRecords = 0;
+        samples.forEach(cell => {
+            const wijmoDetail = options.engine.getDetail(cell.sourceItem, cell.binding) || [];
+            const aggregatorDetail = ResultAggregator.getDetail(
+                options.items,
+                options.configuration,
+                cell.rowKey,
+                cell.columnKey
+            );
+            wijmoRecords += wijmoDetail.length;
+            aggregatorRecords += aggregatorDetail.length;
+            const left = this.detailIDs(wijmoDetail, itemIndexes);
+            const right = this.detailIDs(aggregatorDetail, itemIndexes);
+            if (left.length == right.length && left.every((identifier, index) => identifier == right[index])) return;
+            this.recordMismatch(mismatches, {
+                type: 'detail',
+                rowKey: cell.rowKey,
+                columnKey: cell.columnKey,
+                wijmoCount: wijmoDetail.length,
+                aggregatorCount: aggregatorDetail.length
+            });
+        });
+        return { samples: samples.length, wijmoRecords: wijmoRecords, aggregatorRecords: aggregatorRecords };
+    }
+
+    static detailSamples(cells) {
+        if (!cells.length) return [];
+        const indexes = new Set([0, Math.floor((cells.length - 1) / 2), cells.length - 1]);
+        return Array.from(indexes).map(index => cells[index]);
+    }
+
+    static detailIDs(records, itemIndexes) {
+        return records.map(record => itemIndexes.has(record)
+            ? `item:${itemIndexes.get(record)}`
+            : `value:${JSON.stringify(record)}`).sort();
     }
 
     static configurationSummary(configuration) {

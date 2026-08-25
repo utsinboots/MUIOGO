@@ -113,6 +113,29 @@ export class ResultAggregator {
         };
     }
 
+    // Return the filtered source records represented by a regular or total result cell.
+    static getDetail(items, configuration, rowKey = [], columnKey = []) {
+        if (!Array.isArray(items)) {
+            throw new TypeError('ResultAggregator items must be an array.');
+        }
+        const rowFields = this.fieldDefinitions(configuration.rowFields || []).map(field => field.field);
+        const columnFields = this.fieldDefinitions(configuration.columnFields || []).map(field => field.field);
+        const filters = this.filterDefinitions(configuration.filters || []);
+        if (!Array.isArray(rowKey) || rowKey.length > rowFields.length) {
+            throw new Error('The result detail row key does not match the active layout.');
+        }
+        if (!Array.isArray(columnKey) || columnKey.length > columnFields.length) {
+            throw new Error('The result detail column key does not match the active layout.');
+        }
+        return items.filter(item => this.matchesFilters(item, filters) &&
+            this.matchesKey(item, rowFields, rowKey) &&
+            this.matchesKey(item, columnFields, columnKey));
+    }
+
+    static matchesKey(item, fields, key) {
+        return key.every((value, index) => Object.is(this.keyValue(item[fields[index]]), value));
+    }
+
     // Preserve each dimension's name and requested sort direction.
     static fieldDefinitions(fields) {
         if (!Array.isArray(fields)) {
@@ -286,13 +309,13 @@ export class ResultAggregator {
         return Array.from({ length: fieldCount }, (value, level) => level);
     }
 
-    // Restrict aggregation to the supported MUIO Value sum workflow.
+    // Restrict active measures to the supported MUIO Value sum workflow.
     static valueFields(fields) {
         if (!Array.isArray(fields)) {
             throw new TypeError('ResultAggregator value fields must be an array.');
         }
-        if (fields.length != 1) {
-            throw new Error('ResultAggregator currently requires the Value field.');
+        if (fields.length > 1) {
+            throw new Error('ResultAggregator supports at most one Value field.');
         }
         return fields.map(field => {
             const definition = typeof field == 'string' ? { field: field } : field;
@@ -312,9 +335,6 @@ export class ResultAggregator {
 
     // Reject layouts that reuse dimensions or measures in conflicting roles.
     static validateLayout(rowFields, columnFields, valueFields) {
-        if (!valueFields.length) {
-            throw new Error('ResultAggregator requires at least one value field.');
-        }
         const dimensions = rowFields.concat(columnFields);
         if (new Set(dimensions).size != dimensions.length) {
             throw new Error('A result field cannot be used in both rows and columns.');
