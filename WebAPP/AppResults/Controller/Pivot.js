@@ -1,6 +1,6 @@
 import { Message } from "../../Classes/Message.Class.js";
 import { Base } from "../../Classes/Base.Class.js";
-import { Html } from "../../Classes/Html.Class.js";
+import { Html, escapeHtml } from "../../Classes/Html.Class.js";
 import { Model } from "../Model/Pivot.Model.js";
 import { Osemosys } from "../../Classes/Osemosys.Class.js";
 import { DEF } from "../../Classes/Definition.Class.js";
@@ -37,12 +37,14 @@ export default class Pivot {
         });
     }
 
+    // Convert supported unit markup to Unicode text without parsing model HTML.
     static plainText(value) {
         const superscript = { '0':'⁰', '1':'¹', '2':'²', '3':'³', '4':'⁴', '5':'⁵', '6':'⁶', '7':'⁷', '8':'⁸', '9':'⁹', '+':'⁺', '-':'⁻' };
-        const element = document.createElement('div');
-        element.innerHTML = (value == null ? '' : String(value)).replace(/<sup>(.*?)<\/sup>/gi, (_, text) =>
-            [...text].map(character => superscript[character] || character).join(''));
-        return element.textContent || '';
+        const entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
+        return (value == null ? '' : String(value)).replace(/<sup>(.*?)<\/sup>/gi, (_, text) =>
+            [...text].map(character => superscript[character] || character).join(''))
+            .replace(/<[^>]*>/g, '')
+            .replace(/&(amp|lt|gt|quot|apos|nbsp);/gi, (_, name) => entities[name.toLowerCase()]);
     }
 
     // Organize pivot results into categories and series for chart rendering
@@ -210,10 +212,10 @@ export default class Pivot {
     static formatAxisTooltip(params, model, percent) {
         const items = Array.isArray(params) ? params : [params];
         if (!items.length) return '';
-        const lines = [Pivot.plainText(items[0].axisValueLabel || items[0].name)];
+        const lines = [escapeHtml(Pivot.plainText(items[0].axisValueLabel || items[0].name))];
         items.forEach(item => {
             const value = Array.isArray(item.value) ? item.value[item.value.length - 1] : item.value;
-            lines.push(`${item.marker}${Pivot.plainText(item.seriesName)}: ${Pivot.formatChartValue(value, model, percent)}`);
+            lines.push(`${item.marker}${escapeHtml(Pivot.plainText(item.seriesName))}: ${Pivot.formatChartValue(value, model, percent)}`);
         });
         return lines.join('<br>');
     }
@@ -253,7 +255,7 @@ export default class Pivot {
                 tooltip: {
                     trigger: 'item',
                     confine: true,
-                    formatter: item => `${item.marker}${Pivot.plainText(item.name)}: ${Pivot.formatChartValue(item.value, model, percent)}`
+                    formatter: item => `${item.marker}${escapeHtml(Pivot.plainText(item.name))}: ${Pivot.formatChartValue(item.value, model, percent)}`
                 },
                 legend: {
                 show: app.pivotChart.showLegend,
@@ -310,8 +312,8 @@ export default class Pivot {
                 formatter: params => {
                     if (!itemTooltip) return Pivot.formatAxisTooltip(params, model, percent);
                     const value = Array.isArray(params.value) ? params.value[params.value.length - 1] : params.value;
-                    return `${params.marker}${Pivot.plainText(params.seriesName)}<br>` +
-                        `${Pivot.plainText(params.name)}: ${Pivot.formatChartValue(value, model, percent)}`;
+                    return `${params.marker}${escapeHtml(Pivot.plainText(params.seriesName))}<br>` +
+                        `${escapeHtml(Pivot.plainText(params.name))}: ${Pivot.formatChartValue(value, model, percent)}`;
                 }
             },
             legend: {

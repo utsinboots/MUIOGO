@@ -1,4 +1,5 @@
 import { ResultAggregator } from "./ResultAggregator.Class.js";
+import { escapeHtml } from "./Html.Class.js";
 
 export class ResultGrid {
 
@@ -23,12 +24,13 @@ export class ResultGrid {
         this.valueColumns = view.columns;
         const contextMenu = (event, cell) => this.cellMenu(cell);
         const columns = result.rowFields.map((field, index) => ({
-            title: field,
+            title: escapeHtml(this.displayText(field)),
+            titleDownload: this.displayText(field),
+            titleClipboard: this.displayText(field),
             field: `row_${index}`,
             formatter: cell => this.rowField(cell, index),
-            accessorClipboard: (value, data) => this.displayText(data[`row_${index}_display`]),
-            // Units carry markup (10<sup>3</sup>km<sup>2</sup>); exports need text, not tags.
-            accessorDownload: value => ResultGrid.csvSafe(this.displayText(value)),
+            accessorClipboard: (value, data) => data[`row_${index}_display`],
+            accessorDownload: value => ResultGrid.csvSafe(value),
             contextMenu: contextMenu,
             // Wijmo keeps row fields sorted; a header click toggles direction for sortableFields.
             headerSort: false,
@@ -40,8 +42,8 @@ export class ResultGrid {
             },
             minWidth: 110
         })).concat(view.columns.map((entry, index) => ({
-            title: this.keyLabel(entry),
-            // The header renders markup in the grid, so exports take a plain-text copy of it.
+            // Headers are rendered as HTML by Tabulator, so the label is converted to text up front.
+            title: escapeHtml(this.displayText(this.keyLabel(entry))),
             titleDownload: this.displayText(this.keyLabel(entry)),
             titleClipboard: this.displayText(this.keyLabel(entry)),
             field: `value_${index}`,
@@ -54,7 +56,12 @@ export class ResultGrid {
             contextMenu: contextMenu,
             minWidth: 105
         })));
-        const columnSignature = columns.map(column => column.field).join('|');
+        // Rebuild columns when field labels, totals, or numeric formatting change.
+        const columnSignature = JSON.stringify({
+            format: numberFormat,
+            rows: result.rowFields,
+            columns: view.columns.map(entry => [entry.key, entry.isTotal === true])
+        });
 
         if (this.table && this.columnSignature != columnSignature) {
             this.clearSelectionHighlight();
@@ -162,8 +169,8 @@ export class ResultGrid {
         if (!rows.length || !columns.length) return null;
 
         const fieldCount = this.result.rowFields.length;
-        const header = this.result.rowFields.slice()
-            .concat(columns.map(column => this.displayText(column.getDefinition().title)));
+        const header = this.result.rowFields.map(field => this.displayText(field))
+            .concat(columns.map(column => column.getDefinition().titleClipboard || ''));
         const lines = [header.join('\t')];
         rows.forEach(row => {
             const data = row.getData();
@@ -257,12 +264,14 @@ export class ResultGrid {
                         group && group.start && index < groups[rowIndex].length - 1 && rowIndex > 0)
                 };
                 this.rowLabels(row, result.rowFields.length).forEach((value, index) => {
-                    data[`row_${index}`] = value;
+                    // Convert display labels to safe text while preserving raw keys for detail lookup.
+                    const text = this.displayText(value);
+                    data[`row_${index}`] = text;
                     // A total shows only its marker; blank the display only, so exports stay labelled.
                     const marker = row.isTotal && index == row.key.length;
                     const totalKeyCell = row.isTotal && index < row.key.length;
-                    data[`row_${index}_display`] = marker ? value
-                        : groups[rowIndex][index].display && !totalKeyCell ? value : '';
+                    data[`row_${index}_display`] = marker ? text
+                        : groups[rowIndex][index].display && !totalKeyCell ? text : '';
                 });
                 columns.forEach((column, index) => {
                     const cellID = ResultAggregator.cellID(ResultAggregator.keyID(row.key), ResultAggregator.keyID(column.key));
@@ -312,7 +321,7 @@ export class ResultGrid {
         element.classList.toggle('result-grid-group-first-cell', group.start);
         element.classList.toggle('result-grid-group-last-cell', group.end);
         element.classList.toggle('result-grid-group-middle-cell', group.display);
-        return data[`row_${index}_display`];
+        return escapeHtml(data[`row_${index}_display`]);
     }
 
     // Place each subtotal after its final child and grand totals at the end.
@@ -456,7 +465,11 @@ export class ResultGrid {
                 layout: 'fitDataStretch',
                 maxHeight: '55vh',
                 placeholder: 'No detail records are available for this cell.',
-                columnDefaults: { headerSort: true, resizable: 'header' }
+                columnDefaults: {
+                    headerSort: true,
+                    resizable: 'header',
+                    formatter: cell => escapeHtml(cell.getValue())
+                }
             });
         };
         if (window.jQuery && typeof window.jQuery(dialog).modal == 'function') {
