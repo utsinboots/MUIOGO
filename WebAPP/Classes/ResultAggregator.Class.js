@@ -4,9 +4,10 @@ const RESULT_SHOW_TOTALS = Object.freeze({
     Subtotals: 'subtotals'
 });
 
+// Group Results records into rows, columns, filtered values, and totals for charts and tables.
 export class ResultAggregator {
 
-    // Expose total modes through the ResultAggregator namespace.
+    // Provide the supported row and column total modes used in Results configuration.
     static get ShowTotals() {
         return RESULT_SHOW_TOTALS;
     }
@@ -16,7 +17,7 @@ export class ResultAggregator {
             throw new TypeError('ResultAggregator items must be an array.');
         }
 
-        // Normalize the renderer-neutral pivot configuration before processing records.
+        // Validate and prepare the selected fields, filters, and totals before grouping records.
         const rowDefinitions = this.fieldDefinitions(configuration.rowFields || []);
         const columnDefinitions = this.fieldDefinitions(configuration.columnFields || []);
         const rowFields = rowDefinitions.map(field => field.field);
@@ -73,7 +74,7 @@ export class ResultAggregator {
             });
         });
 
-        // Convert internal sum counters into renderer-neutral result cells.
+        // Create result cells containing the summed values for each row and column combination.
         const cells = Array.from(aggregates.values()).map(cell => {
             const values = {};
             valueFields.forEach(valueField => {

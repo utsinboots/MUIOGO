@@ -1,6 +1,6 @@
 import { ResultAggregator } from "./ResultAggregator.Class.js";
 
-// TEMPORARY MIGRATION ADAPTER (#527): Remove after the native Results panel replaces Wijmo.
+// TEMPORARY MIGRATION (#527): remove after the native Results panel replaces Wijmo.
 export class WijmoResultAdapter {
 
     // Translate the active Wijmo layout into renderer-neutral aggregation settings.

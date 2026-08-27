@@ -6,7 +6,7 @@ const ABSOLUTE_TOLERANCE = 1e-10;
 const RELATIVE_TOLERANCE = 1e-12;
 const MAX_REPORTED_DIFFERENCES = 20;
 
-// TEMPORARY MIGRATION CHECK (#527): Remove this file after approved Wijmo parity fixtures are captured.
+// TEMPORARY MIGRATION (#527): remove after approved Wijmo parity fixtures are captured.
 export class TempResultParityChecker {
 
     static isEnabled() {
