@@ -1,6 +1,7 @@
 import { ResultAggregator } from "./ResultAggregator.Class.js";
 import { escapeHtml } from "./Html.Class.js";
 
+// Display aggregated Results data in an interactive Tabulator table.
 export class ResultGrid {
 
     constructor(selector, options = {}) {
@@ -17,7 +18,7 @@ export class ResultGrid {
         this.clipboardCleanup = null;
     }
 
-    // Render the neutral aggregation result without modifying its cells or keys.
+    // Display the aggregated rows and columns without changing their values or identifiers.
     render(result, numberFormat = 'n2') {
         const view = this.view(result);
         this.result = result;
@@ -244,10 +245,16 @@ export class ResultGrid {
             ? this.orderedEntries(result.columnKeys, result.totals.columnKeys)
             : [];
         const groups = this.rowGroups(rows, result.rowFields.length);
-        const cells = new Map(result.cells.concat(result.totals.cells).map(cell => [
-            ResultAggregator.cellID(ResultAggregator.keyID(cell.rowKey), ResultAggregator.keyID(cell.columnKey)),
-            cell.values.Value
-        ]));
+        const cells = new Map();
+        [result.cells, result.totals.cells].forEach(list => list.forEach(cell => {
+            cells.set(ResultAggregator.cellID(ResultAggregator.keyID(cell.rowKey), ResultAggregator.keyID(cell.columnKey)),
+                cell.values.Value);
+        }));
+        // Build displayed row and column identifiers once instead of once per table cell.
+        const columnIDs = columns.map(column => ResultAggregator.keyID(column.key));
+        const valueKeys = columns.map((column, index) => `value_${index}`);
+        const fieldKeys = result.rowFields.map((_, index) => `row_${index}`);
+        const displayKeys = fieldKeys.map(key => `${key}_display`);
 
         return {
             columns: columns,
@@ -266,17 +273,18 @@ export class ResultGrid {
                 this.rowLabels(row, result.rowFields.length).forEach((value, index) => {
                     // Convert display labels to safe text while preserving raw keys for detail lookup.
                     const text = this.displayText(value);
-                    data[`row_${index}`] = text;
+                    data[fieldKeys[index]] = text;
                     // A total shows only its marker; blank the display only, so exports stay labelled.
                     const marker = row.isTotal && index == row.key.length;
                     const totalKeyCell = row.isTotal && index < row.key.length;
-                    data[`row_${index}_display`] = marker ? text
+                    data[displayKeys[index]] = marker ? text
                         : groups[rowIndex][index].display && !totalKeyCell ? text : '';
                 });
-                columns.forEach((column, index) => {
-                    const cellID = ResultAggregator.cellID(ResultAggregator.keyID(row.key), ResultAggregator.keyID(column.key));
-                    data[`value_${index}`] = cells.has(cellID) ? cells.get(cellID) : null;
-                });
+                const rowID = ResultAggregator.keyID(row.key);
+                for (let index = 0; index < columns.length; index++) {
+                    const value = cells.get(ResultAggregator.cellID(rowID, columnIDs[index]));
+                    data[valueKeys[index]] = value === undefined ? null : value;
+                }
                 return data;
             })
         };
