@@ -1,12 +1,26 @@
 import { ResultAggregator } from "./ResultAggregator.Class.js";
 
+const RESULT_LAYOUT_VERSION = 1;
+// ResultAggregator sums every value field, so callers configure and label them from this.
+const RESULT_AGGREGATION = 'sum';
+// Numeric settings Wijmo persisted inside saved views, mapped back by the legacy reader.
+const WIJMO_TOTALS = Object.freeze({
+    0: ResultAggregator.ShowTotals.None,
+    1: ResultAggregator.ShowTotals.GrandTotals,
+    2: ResultAggregator.ShowTotals.Subtotals
+});
+const WIJMO_AGGREGATE_SUM = 1;
+
 // Store the model-specific Results field layout and provide ResultAggregator configuration.
 export class ResultLayoutState {
 
-    static VERSION = 1;
-    // Translate numeric Wijmo total settings found in existing saved views.
-    static WIJMO_TOTALS = { 0: ResultAggregator.ShowTotals.None, 1: ResultAggregator.ShowTotals.GrandTotals, 2: ResultAggregator.ShowTotals.Subtotals };
-    static WIJMO_AGGREGATE_SUM = 1;
+    static get Version() {
+        return RESULT_LAYOUT_VERSION;
+    }
+
+    static get Aggregation() {
+        return RESULT_AGGREGATION;
+    }
 
     static isTotalMode(mode) {
         return Object.values(ResultAggregator.ShowTotals).includes(mode);
@@ -32,7 +46,9 @@ export class ResultLayoutState {
         this.fields = (fields || []).map(field => ({
             field: field.field,
             header: field.header == null ? field.field : field.header,
-            isHtml: field.isHtml === true
+            isHtml: field.isHtml === true,
+            // Declared by the caller: measures belong in Values, every other field in Rows.
+            isMeasure: field.isMeasure === true
         }));
         const known = name => this.fields.some(field => field.field == name);
         return this.defer(() => {
@@ -165,7 +181,7 @@ export class ResultLayoutState {
         return {
             rowFields: this.rows.map(definition),
             columnFields: this.columns.map(definition),
-            valueFields: this.values.map(name => ({ field: name, aggregation: 'sum' })),
+            valueFields: this.values.map(name => ({ field: name, aggregation: ResultLayoutState.Aggregation })),
             // Apply active filters regardless of their displayed field area to preserve Wijmo behavior.
             filters: Object.keys(this.filters)
                 .map(name => ({ field: name, values: this.filters[name].slice() })),
@@ -178,7 +194,7 @@ export class ResultLayoutState {
         const filters = {};
         Object.keys(this.filters).forEach(name => { filters[name] = this.filters[name].slice(); });
         return {
-            version: ResultLayoutState.VERSION,
+            version: ResultLayoutState.Version,
             rows: this.rows.slice(),
             columns: this.columns.slice(),
             filterFields: this.filterFields.slice(),
@@ -209,7 +225,7 @@ export class ResultLayoutState {
 
     applyDefinition(source) {
         // Reject unknown formats instead of partially loading incompatible saved-view state.
-        if (source.version !== ResultLayoutState.VERSION) {
+        if (source.version !== ResultLayoutState.Version) {
             this.warn('Unsupported saved view version; view was not loaded', String(source.version));
             return this;
         }
@@ -288,8 +304,8 @@ export class ResultLayoutState {
             this.filters = {};
             this.descending = {};
             (source.fields || []).forEach(entry => this.applyLegacyField(entry, source));
-            const rows = ResultLayoutState.WIJMO_TOTALS[source.showRowTotals];
-            const columns = ResultLayoutState.WIJMO_TOTALS[source.showColumnTotals];
+            const rows = WIJMO_TOTALS[source.showRowTotals];
+            const columns = WIJMO_TOTALS[source.showColumnTotals];
             if (rows != null) this.totals.rows = rows;
             if (columns != null) this.totals.columns = columns;
             this.reportLegacyLayout(source);
@@ -321,7 +337,7 @@ export class ResultLayoutState {
         if (filter.conditions || filter.and != null) this.warn('Condition filter not applied', label);
 
         if (this.values.includes(field)) {
-            if (entry.aggregate != null && entry.aggregate != ResultLayoutState.WIJMO_AGGREGATE_SUM) {
+            if (entry.aggregate != null && entry.aggregate != WIJMO_AGGREGATE_SUM) {
                 this.warn('Only Sum is supported', `${label} used aggregate ${entry.aggregate}`);
             }
             if (entry.showAs) this.warn('Show As calculation not applied', label);
@@ -333,10 +349,10 @@ export class ResultLayoutState {
     reportLegacyLayout(source) {
         if (source.totalsBeforeData === true) this.warn('Totals are always shown after the data');
         if (source.showZeros === true) this.warn('Show zeros is not supported');
-        if (ResultLayoutState.WIJMO_TOTALS[source.showRowTotals] == null && source.showRowTotals != null) {
+        if (WIJMO_TOTALS[source.showRowTotals] == null && source.showRowTotals != null) {
             this.warn('Unknown row totals mode', String(source.showRowTotals));
         }
-        if (ResultLayoutState.WIJMO_TOTALS[source.showColumnTotals] == null && source.showColumnTotals != null) {
+        if (WIJMO_TOTALS[source.showColumnTotals] == null && source.showColumnTotals != null) {
             this.warn('Unknown column totals mode', String(source.showColumnTotals));
         }
     }

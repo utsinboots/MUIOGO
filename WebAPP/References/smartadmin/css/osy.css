@@ -867,9 +867,28 @@ li {
 .wj-pivotpanel {
     min-height: 500px!important;
     /* background: 0 0!important; */
-    border: 1px solid #e4e4e4; 
+    border: 1px solid #e4e4e4;
     background: #fff;
 }
+
+/* Results field panel: the open-source replacement for the Wijmo pivot panel. */
+.result-panel { min-height: 500px; padding: 8px; border: 1px solid #e4e4e4; background: #fff; font-size: 12px; color: #2d3340; }
+.result-panel-section { margin-bottom: 10px; }
+.result-panel-title { display: block; margin-bottom: 4px; font-weight: 700; color: #3c4557; }
+.result-panel-fields { max-height: 170px; overflow-y: auto; padding: 4px; border: 1px solid #e4e4e4; background: #fafbfc; }
+.result-panel-field { display: block; margin: 0; padding: 1px 2px; font-weight: normal; cursor: pointer; }
+.result-panel-field input { margin-right: 5px; }
+.result-panel-area { margin-bottom: 6px; }
+.result-panel-area-title { display: block; margin-bottom: 2px; font-weight: 700; color: #3c4557; }
+.result-panel-glyph { display: inline-block; width: 14px; color: var(--second-color); }
+.result-panel-list { min-height: 30px; margin: 0; padding: 3px; list-style: none; border: 1px solid #e4e4e4; background: #fafbfc; }
+.result-panel-chip { display: flex; align-items: center; justify-content: space-between; margin: 2px 0; padding: 3px 6px; background: #eceff3; border: 1px solid #d3d7de; cursor: move; }
+.result-panel-chip-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.result-panel-remove { margin-left: 6px; color: #999; text-decoration: none; font-weight: 700; }
+.result-panel-remove:hover { color: #d9534f; text-decoration: none; }
+.result-panel-placeholder { height: 24px; margin: 2px 0; border: 1px dashed #a9b2c0; background: #f0f4f8; }
+.result-panel-controls { display: flex; align-items: center; justify-content: space-between; }
+.result-panel-controls label { margin: 0; font-weight: normal; }
 
 /*wijmo solution for green check boxes*/
 .wj-pivotpanel .wj-flexgrid .wj-cell label input[type='checkbox'] {
