@@ -391,12 +391,6 @@ export default class Pivot {
         if (Pivot.activeApp != app || app.updatingParam) return;
         Pivot.renderResultGrid(app, model);
         Pivot.renderChart(app, model);
-        // TEMPORARY MIGRATION CHECK (#527): Remove after approved Wijmo parity fixtures pass.
-        TempResultParityChecker.run(app.engine, model.pivotData, {
-            case: model.casename,
-            group: model.group,
-            param: model.param
-        });
     }
 
     static disposeResultGrid(app = Pivot.activeApp) {
@@ -710,6 +704,12 @@ export default class Pivot {
         Pivot.activeApp = app;
         app.engine.updatedView.addHandler(() => {
             Pivot.renderResults(app, model);
+            // Compare only after Wijmo finishes its view, so incomplete data cannot report a false failure.
+            TempResultParityChecker.run(app.engine, model.pivotData, {
+                case: model.casename,
+                group: model.group,
+                param: model.param
+            });
         });
         Pivot.renderResults(app, model);
         Pivot.bindChartLifecycle(app);

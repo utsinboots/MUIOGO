@@ -1,4 +1,5 @@
 import { ResultAggregator } from "./ResultAggregator.Class.js";
+import { ResultLayoutState } from "./ResultLayoutState.Class.js";
 import { WijmoResultAdapter } from "./WijmoResultAdapter.Class.js";
 
 const PARITY_STORAGE_KEY = 'muiogo-result-aggregator-parity';
@@ -19,12 +20,16 @@ export class TempResultParityChecker {
         if (engine.valueFields.length != 1) return null;
         const startedAt = performance.now();
         try {
-            const configuration = WijmoResultAdapter.configuration(engine, items);
+            const wijmoConfiguration = WijmoResultAdapter.configuration(engine, items);
+            const layout = this.layoutState(engine);
+            const configuration = layout.configuration();
             const aggregateResult = ResultAggregator.aggregate(items, configuration);
             const wijmoResult = this.wijmoResult(engine);
             const report = this.compare(wijmoResult, aggregateResult, {
                 context: context,
                 configuration: configuration,
+                wijmoConfiguration: wijmoConfiguration,
+                layoutWarnings: layout.warnings.slice(),
                 engine: engine,
                 items: items,
                 duration: performance.now() - startedAt
@@ -41,6 +46,18 @@ export class TempResultParityChecker {
             this.publish(report);
             return report;
         }
+    }
+
+    // Rebuild the neutral layout from Wijmo's active definition without changing the live panel.
+    static layoutState(engine) {
+        const valueField = Array.from(engine.valueFields)[0];
+        const fields = Array.from(engine.fields).filter(field => field.binding).map(field => ({
+            field: field.binding,
+            header: field.header,
+            isHtml: field.isContentHtml === true,
+            isMeasure: field.binding == 'Value'
+        }));
+        return new ResultLayoutState(fields, valueField ? valueField.format : 'n2').apply(engine.viewDefinition);
     }
 
     // Normalize Wijmo's encoded pivotView bindings into explicit result keys.
@@ -89,6 +106,11 @@ export class TempResultParityChecker {
     // Compare keys, cells, totals, and raw values while recording every mismatch category.
     static compare(wijmoResult, aggregateResult, options) {
         const mismatches = { count: 0, items: [] };
+        const layoutConfigurationMatches = this.compareConfigurations(
+            options.wijmoConfiguration,
+            options.configuration,
+            mismatches
+        );
         const rowOrderMatches = this.compareKeyOrder('row', wijmoResult.rowKeys, aggregateResult.rowKeys, mismatches);
         const columnOrderMatches = this.compareKeyOrder('column', wijmoResult.columnKeys, aggregateResult.columnKeys, mismatches);
         const regular = this.compareCells('cell', wijmoResult.cells, aggregateResult.cells, mismatches);
@@ -98,6 +120,8 @@ export class TempResultParityChecker {
             status: mismatches.count ? 'FAIL' : 'PASS',
             context: options.context,
             configuration: this.configurationSummary(options.configuration),
+            layoutConfigurationMatches: layoutConfigurationMatches,
+            layoutWarnings: options.layoutWarnings,
             rowOrderMatches: rowOrderMatches,
             columnOrderMatches: columnOrderMatches,
             wijmoCells: wijmoResult.cells.length,
@@ -111,6 +135,37 @@ export class TempResultParityChecker {
             mismatchCount: mismatches.count,
             differences: mismatches.items,
             durationMilliseconds: options.duration
+        };
+    }
+
+    // Compare normalized layouts so filter ordering alone does not report a mismatch.
+    static compareConfigurations(wijmoConfiguration, layoutConfiguration, mismatches) {
+        const wijmo = this.normalizedConfiguration(wijmoConfiguration);
+        const layout = this.normalizedConfiguration(layoutConfiguration);
+        if (JSON.stringify(wijmo) == JSON.stringify(layout)) return true;
+        this.recordMismatch(mismatches, { type: 'layout-configuration', wijmo: wijmo, layout: layout });
+        return false;
+    }
+
+    static normalizedConfiguration(configuration) {
+        const fields = entries => entries.map(entry => ({
+            field: entry.field,
+            descending: entry.descending === true
+        }));
+        const filters = configuration.filters.map(filter => ({
+            field: filter.field,
+            values: filter.values.map(value => ResultAggregator.keyValue(value))
+                .sort((left, right) => ResultAggregator.keyID([left]).localeCompare(ResultAggregator.keyID([right])))
+        })).sort((left, right) => left.field.localeCompare(right.field));
+        return {
+            rowFields: fields(configuration.rowFields),
+            columnFields: fields(configuration.columnFields),
+            valueFields: configuration.valueFields.map(entry => ({
+                field: entry.field,
+                aggregation: entry.aggregation
+            })),
+            filters: filters,
+            totals: configuration.totals
         };
     }
 
@@ -193,6 +248,9 @@ export class TempResultParityChecker {
             const wijmoCell = wijmoMap.get(identifier);
             const aggregatorCell = aggregatorMap.get(identifier);
             if (!wijmoCell || !aggregatorCell) {
+                // Wijmo materializes empty cross-product cells; the aggregator leaves the same blank cells sparse.
+                const existingCell = wijmoCell || aggregatorCell;
+                if (existingCell && existingCell.values.Value === null) return;
                 this.recordMismatch(mismatches, this.cellDifference(kind, wijmoCell, aggregatorCell, 'missing'));
                 return;
             }
