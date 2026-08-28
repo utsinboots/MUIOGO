@@ -19,10 +19,17 @@ export class ResultGrid {
         this.currency = options.currency || 'USD';
         this.autoScrollCleanup = null;
         this.clipboardCleanup = null;
+        this.pending = null;
+    }
+
+    // Run renders one at a time: destroying a table while it still builds leaves Tabulator's data promise to reject.
+    render(result, numberFormat = 'n2') {
+        this.pending = Promise.resolve(this.pending).then(() => this.build(result, numberFormat), () => {});
+        return this.pending;
     }
 
     // Display the aggregated rows and columns without changing their values or identifiers.
-    render(result, numberFormat = 'n2') {
+    build(result, numberFormat = 'n2') {
         // A pending variable change can resolve after the page moved on and removed the host.
         if (!document.querySelector(this.selector)) return;
         const view = this.view(result);
@@ -83,8 +90,7 @@ export class ResultGrid {
         if (this.table) {
             this.clearRangeSelection();
             this.clearSelectionHighlight();
-            this.table.replaceData(view.rows);
-            return;
+            return this.table.replaceData(view.rows);
         }
         this.table = new Tabulator(this.selector, {
             data: view.rows,
@@ -126,11 +132,12 @@ export class ResultGrid {
         });
         this.table.on('renderComplete', () => this.paintRangeHighlight());
         this.table.on('rangeChanged', () => this.paintRangeHighlight());
-        this.table.on('tableBuilt', () => {
+        return new Promise(resolve => this.table.on('tableBuilt', () => {
             this.tableReady = true;
             this.bindRangeAutoScroll();
             this.bindRangeClipboard();
-        });
+            resolve();
+        }));
     }
 
     // Mark the selected columns' headers and each row's innermost field cell, from the current ranges.

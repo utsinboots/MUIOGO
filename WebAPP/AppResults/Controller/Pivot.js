@@ -138,13 +138,25 @@ export default class Pivot {
         const tuples = chartModel.categoryTuples || [];
         const fieldCount = (chartModel.rowFields || []).length;
         const leafIndex = fieldCount - 1;
-        const leafRotated = fieldCount >= 3;
+        const host = document.getElementById('pivotChart');
+        const chartWidth = Math.max(host && host.clientWidth ? host.clientWidth : 0, 640) - 120;
+        const categoryWidth = chartModel.categories.length ? chartWidth / chartModel.categories.length : chartWidth;
+        const longestLeaf = tuples.reduce((width, tuple) => {
+            const label = leafIndex >= 0 ? Pivot.plainText(tuple[leafIndex]) : '';
+            return Math.max(width, label.length * 6.5);
+        }, 0);
+        // Rotate crowded leaf labels like Wijmo while keeping outer grouped labels horizontal.
+        const leafRotated = !horizontal && longestLeaf > Math.max(categoryWidth, 24);
+        const leafAngle = leafRotated ? 45 : 0;
+        const leafHeight = leafRotated
+            ? Math.min(160, Math.ceil(longestLeaf * Math.sin(Math.PI / 4)) + 14)
+            : 24;
         const leafAxis = {
             type: 'category',
             data: chartModel.categories,
             axisLabel: {
                 hideOverlap: true,
-                rotate: leafRotated ? 90 : 0,
+                rotate: leafAngle,
                 formatter: (_, index) => {
                     const tuple = tuples[index] || [];
                     const value = leafIndex >= 0 ? tuple[leafIndex] : null;
@@ -154,7 +166,6 @@ export default class Pivot {
         };
         if (fieldCount < 2 || tuples.length != chartModel.categories.length) return leafAxis;
 
-        const leafHeight = leafRotated ? 46 : 24;
         const step = 22;
         const axes = [leafAxis];
         for (let field = 0; field < leafIndex; field++) {
@@ -412,7 +423,7 @@ export default class Pivot {
         Pivot.chart = null;
     }
 
-    // Refresh the open-source grid from the same active layout used by the Wijmo panel.
+    // Re-aggregate the model data for the active layout and refresh the grid.
     static renderResultGrid(app, model) {
         const configuration = app.state.configuration();
         app.resultConfiguration = configuration;
@@ -578,75 +589,6 @@ export default class Pivot {
     static initPage(model) {
         Message.clearMessages();
         Html.title(model.casename, model.VARNAMES[model.group][model.param], model.group);
-
-        //console.log('model ', model)
-        // add Grid-based layout for the PivotPanel
-        // wijmo.olap.PivotPanel.controlTemplate = 
-        // `<div>  
-        //     <div class="field-list-label">  
-        //         <label wj-part="g-flds"></label>  
-        //     </div>  
-        //     <div class="field-list pad">  
-        //         <div wj-part="d-fields"></div>  
-        //     </div>  
-        //     <div class="drag-areas-label">  
-        //         <label wj-part="g-drag"></label>  
-        //     </div>  
-        //     <table>
-        //         <tbody>
-        //             <tr>
-        //                 <td width="50%">
-        //                     <div class="filter-list pad">  
-        //                     <label>  
-        //                         <span class="wj-glyph wj-glyph-filter"></span>   
-        //                         <span wj-part="g-flt"></span>  
-        //                     </label>  
-        //                     <div wj-part="d-filters"></div>  
-        //                     </div>  
-        //                 </td>
-        //                 <td width="50%" style="border-left-style: solid;">
-        //                     <div class="column-list pad bdr-left">  
-        //                         <label>  
-        //                             <span class="wj-glyph">⫴</span>   
-        //                             <span wj-part="g-cols"></span>  
-        //                         </label>  
-        //                         <div wj-part="d-cols"></div>  
-        //                     </div> 
-        //                 </td>
-        //             </tr>
-        //             <tr style="border-top-style: solid;">
-        //                 <td width="50%">
-        //                     <div class="row-list pad bdr-top">  
-        //                         <label>  
-        //                             <span class="wj-glyph">≡</span>   
-        //                             <span wj-part="g-rows"></span>  
-        //                         </label>  
-        //                         <div wj-part="d-rows"></div>  
-        //                     </div>  
-        //                 </td>
-        //                 <td width="50%" style="border-left-style: solid;">
-        //                     <div class="values-list pad bdr-left bdr-top">  
-        //                         <label>  
-        //                             <span class="wj-glyph">Σ</span>   
-        //                             <span wj-part="g-vals"></span>  
-        //                         </label>  
-        //                         <div wj-part="d-vals"></div>  
-        //                     </div> 
-        //                 </td>
-        //             </tr> 
-        //         </tbody>
-        //     </table>
-        //     <div wj-part="d-prog" class="progress-bar"></div>  
-        //     <div class="control-area" style="display:none">  
-        //         <label>  
-        //             <input wj-part="chk-defer" type="checkbox">   
-        //             <span wj-part="g-defer">Defer Updates</span>  
-        //         </label>  
-        //         <button wj-part="btn-update" class="wj-btn wj-state-disabled" type="button" disabled>
-        //             Update  
-        //         </button>  
-        //     </div>  
-        // </div>`;
 
         if (model.refreshPage) {
             Pivot.disposeResultPanel();

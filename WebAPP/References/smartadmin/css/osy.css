@@ -1360,7 +1360,10 @@ jqx-menu-vertical-material .jqx-menu-item-top-selected-material, .jqx-grid-selec
 /* Selected range mirrored onto the column headers, like Wijmo's selected-header highlight. */
 #pivotGrid .tabulator-header .tabulator-col.result-grid-range-header { background: #628da8; color: #fff; }
 .tabulator-menu .fa { width: 16px; margin-right: 6px; text-align: center; }
-.result-grid-detail-dialog .modal-dialog { width: min(1100px, calc(100% - 40px)); }
+.result-grid-detail-dialog.in { display: flex !important; align-items: center; padding: 20px !important; }
+.result-grid-detail-dialog .modal-dialog { width: min(1100px, calc(100% - 40px)); max-height: calc(100vh - 40px); margin: 0 auto; }
+.result-grid-detail-dialog .modal-content { display: flex; flex-direction: column; max-height: calc(100vh - 40px); }
+.result-grid-detail-dialog .modal-body { min-height: 0; overflow: hidden; }
 .result-grid-detail-dialog .result-grid-detail-summary { color: #4b5563; font-weight: 600; }
-.result-grid-detail-dialog .result-grid-detail-table { border: 1px solid #bdc4cf; }
+.result-grid-detail-dialog .result-grid-detail-table { max-height: 55vh; overflow-y: auto; border: 1px solid #bdc4cf; }
 
