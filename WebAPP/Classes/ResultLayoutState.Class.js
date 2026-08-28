@@ -110,14 +110,22 @@ export class ResultLayoutState {
         const names = Object.keys(this.filters);
         if (!names.length) return this;
         // Collect values for every active filter during one pass over the result records.
-        const present = new Map(names.map(name => [name, new Set()]));
+        const present = new Map(names.map(name => [name, new Map()]));
         (items || []).forEach(item => {
-            names.forEach(name => present.get(name).add(ResultAggregator.keyValue(item[name])));
+            names.forEach(name => {
+                const value = ResultAggregator.keyValue(item[name]);
+                present.get(name).set(ResultAggregator.keyID([value]), value);
+            });
         });
         return this.defer(() => {
             names.forEach(name => {
-                const seen = present.get(name);
-                const kept = this.filters[name].filter(value => seen.has(ResultAggregator.keyValue(value)));
+                const available = present.get(name);
+                const kept = this.filters[name].map(value => {
+                    const exact = available.get(ResultAggregator.keyID([ResultAggregator.keyValue(value)]));
+                    if (exact !== undefined) return exact;
+                    const matches = Array.from(available.values()).filter(item => String(item) == String(value));
+                    return matches.length == 1 ? matches[0] : undefined;
+                }).filter(value => value !== undefined);
                 if (kept.length) this.filters[name] = kept;
                 else delete this.filters[name];
             });

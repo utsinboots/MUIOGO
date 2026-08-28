@@ -884,11 +884,24 @@ li {
 .result-panel-list { min-height: 30px; margin: 0; padding: 3px; list-style: none; border: 1px solid #e4e4e4; background: #fafbfc; }
 .result-panel-chip { display: flex; align-items: center; justify-content: space-between; margin: 2px 0; padding: 3px 6px; background: #eceff3; border: 1px solid #d3d7de; cursor: move; }
 .result-panel-chip-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.result-panel-remove { margin-left: 6px; color: #999; text-decoration: none; font-weight: 700; }
-.result-panel-remove:hover { color: #d9534f; text-decoration: none; }
 .result-panel-placeholder { height: 24px; margin: 2px 0; border: 1px dashed #a9b2c0; background: #f0f4f8; }
 .result-panel-controls { display: flex; align-items: center; justify-content: space-between; }
 .result-panel-controls label { margin: 0; font-weight: normal; }
+.result-panel-chip button { margin-left: 4px; padding: 0 3px; border: 0; background: none; color: #999; font-weight: 700; line-height: 1; text-decoration: none; }
+.result-panel-chip button:hover { color: var(--main-color); }
+.result-panel-remove:hover { color: #d9534f; }
+/* Field settings dialog: sort, filter values and measure number format. */
+.result-field-settings .result-field-section { margin-bottom: 14px; }
+.result-field-settings .result-field-label { display: block; margin-bottom: 4px; font-weight: 700; color: #3c4557; }
+.result-field-settings .result-field-radio { margin-right: 14px; font-weight: normal; }
+.result-field-settings .result-field-actions { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.result-field-settings .result-field-count { margin-left: auto; color: #6b7482; font-size: 12px; }
+.result-field-settings .result-field-values { max-height: 240px; overflow-y: auto; padding: 4px; border: 1px solid #e4e4e4; background: #fafbfc; }
+.result-field-settings .result-field-value { display: block; margin: 0; padding: 1px 2px; font-weight: normal; cursor: pointer; }
+.result-field-settings .result-field-value input { margin-right: 5px; }
+.result-field-settings .result-field-empty { margin: 6px 2px; color: #6b7482; }
+.result-field-settings .result-field-hint { margin: 6px 2px 0; color: #a94442; }
+.result-field-settings [hidden] { display: none; }
 
 /*wijmo solution for green check boxes*/
 .wj-pivotpanel .wj-flexgrid .wj-cell label input[type='checkbox'] {

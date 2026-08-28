@@ -1,4 +1,5 @@
 import { escapeHtml } from "./Html.Class.js";
+import { ResultFieldSettings } from "./ResultFieldSettings.Class.js";
 import { ResultLayoutState } from "./ResultLayoutState.Class.js";
 
 const PANEL_AREAS = Object.freeze([
@@ -34,6 +35,12 @@ export class ResultPanel {
 
     root() {
         return document.querySelector(this.selector);
+    }
+
+    displayText(value) {
+        return typeof this.options.plainText == 'function'
+            ? this.options.plainText(value)
+            : String(value == null ? '' : value);
     }
 
     // Draw the fixed shell once; refresh() fills the field list and the four areas.
@@ -75,7 +82,16 @@ export class ResultPanel {
             this.state.assign(remove.closest('.result-panel-chip').dataset.field, null);
             return;
         }
+        const settings = event.target.closest('.result-panel-settings');
+        if (settings) return this.openSettings(settings.closest('.result-panel-chip').dataset.field);
         if (event.target.closest('.result-panel-update')) this.apply();
+    }
+
+    openSettings(field) {
+        ResultFieldSettings.open(field, this.state, {
+            fieldValues: this.options.fieldValues,
+            plainText: this.options.plainText
+        });
     }
 
     // Let every area accept chips dragged from the other three.
@@ -159,7 +175,7 @@ export class ResultPanel {
         root.querySelector('.result-panel-fields').innerHTML = this.state.fields.map(field =>
             '<label class="result-panel-field">' +
             `<input type="checkbox" value="${escapeHtml(field.field)}"${placed.has(field.field) ? ' checked' : ''}> ` +
-            `<span>${escapeHtml(field.header)}</span></label>`).join('');
+            `<span>${escapeHtml(this.displayText(field.header))}</span></label>`).join('');
 
         ResultPanel.Areas.forEach(area => {
             const list = root.querySelector(`.result-panel-area[data-area="${area.key}"] .result-panel-list`);
@@ -170,16 +186,18 @@ export class ResultPanel {
     // Value chips name their aggregation, which ResultLayoutState fixes for every measure.
     chip(field, area) {
         const entry = this.state.fields.find(item => item.field == field);
-        const header = entry ? entry.header : field;
+        const header = this.displayText(entry ? entry.header : field);
         const aggregation = ResultLayoutState.Aggregation;
         const suffix = area == 'values' ? ` (${aggregation.charAt(0).toUpperCase()}${aggregation.slice(1)})` : '';
         const label = escapeHtml(header) + escapeHtml(suffix);
         return `<li class="result-panel-chip" data-field="${escapeHtml(field)}">` +
             `<span class="result-panel-chip-label">${label}</span>` +
+            `<button type="button" class="result-panel-settings" aria-label="Settings for ${escapeHtml(header)}" title="Field settings">&#9881;</button>` +
             `<button type="button" class="result-panel-remove" aria-label="Remove ${escapeHtml(header)}" title="Remove field">&times;</button></li>`;
     }
 
     destroy() {
+        ResultFieldSettings.destroy();
         if (this.unsubscribe) this.unsubscribe();
         this.unsubscribe = null;
         const root = this.root();
