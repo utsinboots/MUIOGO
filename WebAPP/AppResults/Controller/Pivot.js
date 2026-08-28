@@ -47,6 +47,20 @@ export default class Pivot {
             .replace(/&(amp|lt|gt|quot|apos|nbsp);/gi, (_, name) => entities[name.toLowerCase()]);
     }
 
+    // Fill a native select from a list of records, keeping the current value when it still exists.
+    static fillSelect(selector, items, valueKey, labelKey, selected) {
+        const control = document.querySelector(selector);
+        if (!control) return;
+        control.innerHTML = (items || []).map(item => {
+            const option = document.createElement('option');
+            option.value = item[valueKey];
+            option.textContent = Pivot.plainText(item[labelKey]);
+            return option.outerHTML;
+        }).join('');
+        // outerHTML serializes the selected attribute, not the property, so set the live value here.
+        if (selected != null) control.value = selected;
+    }
+
     // Organize aggregated results into categories and series for chart rendering.
     static getChartModel(app) {
         const result = app.aggregateResult;
@@ -569,8 +583,6 @@ export default class Pivot {
         if(model.refreshPage){      
             wijmo.olap.PivotPanel.disposeAll('#pivotPanel');
             Pivot.disposeResultGrid();
-            wijmo.input.ComboBox.disposeAll('#cmbViews');
-            wijmo.input.AutoComplete.disposeAll('#cmbParams');
         }
         Pivot.disposeChart();
 
@@ -696,19 +708,9 @@ export default class Pivot {
         Pivot.renderResults(app, model);
         Pivot.bindChartLifecycle(app);
 
-        // app.cmbParams = new wijmo.input.AutoComplete('#cmbParams', {
-        app.cmbParams = new wijmo.input.ComboBox('#cmbParams', {
-            itemsSource: model.VARIABLEOBJECT,
-            dropDownCssClass: 'wj-vars',
-            displayMemberPath: 'name',
-            selectedValuePath: 'value',
-            selectedValue: 'ANC',
-            selectedIndexChanged: function (s, e) {  
-                if(s.selectedValue != null && model.TriggerUpdate){
-                    Pivot.updateParam(s.selectedValue, app, model);
-                }     
-                
-            }
+        Pivot.fillSelect('#cmbParams', model.VARIABLEOBJECT, 'value', 'name', model.param);
+        $('#cmbParams').off('change').on('change', function () {
+            if (this.value != null && model.TriggerUpdate) Pivot.updateParam(this.value, app, model);
         });
 
         $('#cmbChartType').html(model.ChartTypes.map(type =>
@@ -726,15 +728,9 @@ export default class Pivot {
             Pivot.renderChart(app, model);
         });
 
-        app.cmbViews = new wijmo.input.ComboBox('#cmbViews', {
-            itemsSource: model.VIEWS,
-            displayMemberPath: 'osy-viewname',
-            selectedValuePath: 'osy-viewId',
-            selectedIndexChanged: function (s, e) {   
-                if(model.TriggerUpdate){
-                    Pivot.updateView(s.selectedValue, app, model)
-                }   
-            }
+        Pivot.fillSelect('#cmbViews', model.VIEWS, 'osy-viewId', 'osy-viewname', 'null');
+        $('#cmbViews').off('change').on('change', function () {
+            if (model.TriggerUpdate) Pivot.updateView(this.value, app, model);
         });
 
         Pivot.loadECharts()
@@ -829,7 +825,7 @@ export default class Pivot {
                 model.VIEWS.push(POSTDATA);
                 // Html.ddlViews(model.VIEWS[model.param]);
                 //Html.ddlViews(model.VIEWS);
-                app.cmbViews.itemsSource = model.VIEWS;
+                Pivot.fillSelect('#cmbViews', model.VIEWS, 'osy-viewId', 'osy-viewname', document.querySelector('#cmbViews').value);
                 $('#createView').modal('toggle');
             })
             .catch(error => {
@@ -855,8 +851,7 @@ export default class Pivot {
                     }
                 });
                 // Html.ddlViews(model.VIEWS[model.param]);
-                app.cmbViews.itemsSource = model.VIEWS;
-                app.cmbViews.selectedValue = 'null';
+                Pivot.fillSelect('#cmbViews', model.VIEWS, 'osy-viewId', 'osy-viewname', 'null');
                 Osemosys.updateViews(model.casename, viewUpdate, model.param)
                 .then(response => {
                     app.engine.viewDefinition = model.DEFAULTVIEW;
@@ -995,7 +990,7 @@ export default class Pivot {
                 }
                 else{
                     model.TriggerUpdate = false;
-                    app.cmbViews.selectedValue = 'null';
+                    document.querySelector('#cmbViews').value = 'null';
                     model.VIEW = 'null';
                     model.TriggerUpdate = true;
                     Html.title(model.casename, model.VARNAMES[model.group][model.param], model.group+' - Default view');
@@ -1076,7 +1071,7 @@ export default class Pivot {
 
                         if(param != model.param){
                             model.TriggerUpdate = false;
-                            app.cmbParams.selectedValue = param;
+                            document.querySelector('#cmbParams').value = param;
                             model.TriggerUpdate = true;
                             Pivot.updateParam(param, app, model, obj);
                         }
