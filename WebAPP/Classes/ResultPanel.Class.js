@@ -30,6 +30,13 @@ export class ResultPanel {
         // Stored as fields so destroy() can detach them and a rebuilt panel cannot double-fire.
         this.onChangeEvent = event => this.handleChange(event);
         this.onClickEvent = event => this.handleClick(event);
+        this.onContextMenuEvent = event => this.handleContextMenu(event);
+        this.onKeyDownEvent = event => this.handleKeyDown(event);
+        this.onDocumentClickEvent = event => {
+            const command = event.target.closest('.result-panel-menu-command');
+            if (command && !command.disabled) this.runMenuCommand(command.dataset.action);
+            else if (!event.target.closest('.result-panel-menu')) this.closeMenu();
+        };
         this.build();
     }
 
@@ -52,11 +59,11 @@ export class ResultPanel {
             '<div class="result-panel-section"><label class="result-panel-title">Choose fields to add to report:</label>' +
             '<div class="result-panel-fields"></div></div>' +
             '<div class="result-panel-section"><label class="result-panel-title">Drag fields between areas below:</label>' +
-            ResultPanel.Areas.map(area =>
+            '<div class="result-panel-layout">' + ResultPanel.Areas.map(area =>
                 `<div class="result-panel-area" data-area="${area.key}">` +
                 `<label class="result-panel-area-title"><span class="result-panel-glyph">${area.glyph}</span> ${area.label}</label>` +
                 '<ul class="result-panel-list"></ul></div>').join('') +
-            '</div>' +
+            '</div></div>' +
             '<div class="result-panel-section result-panel-controls">' +
             '<label><input type="checkbox" class="result-panel-defer"> Defer Updates</label>' +
             '<button type="button" class="btn btn-default btn-sm result-panel-update" disabled>Update</button>' +
@@ -64,6 +71,9 @@ export class ResultPanel {
 
         root.addEventListener('change', this.onChangeEvent);
         root.addEventListener('click', this.onClickEvent);
+        root.addEventListener('contextmenu', this.onContextMenuEvent);
+        root.addEventListener('keydown', this.onKeyDownEvent);
+        document.addEventListener('click', this.onDocumentClickEvent);
         this.bindSortables();
         this.unsubscribe = this.state.onChange(() => this.stateChanged());
         this.refresh();
@@ -77,14 +87,78 @@ export class ResultPanel {
     }
 
     handleClick(event) {
-        const remove = event.target.closest('.result-panel-remove');
-        if (remove) {
-            this.state.assign(remove.closest('.result-panel-chip').dataset.field, null);
-            return;
-        }
-        const settings = event.target.closest('.result-panel-settings');
-        if (settings) return this.openSettings(settings.closest('.result-panel-chip').dataset.field);
         if (event.target.closest('.result-panel-update')) this.apply();
+    }
+
+    handleContextMenu(event) {
+        const chip = event.target.closest('.result-panel-chip');
+        if (!chip) return;
+        event.preventDefault();
+        this.openMenu(chip.dataset.field, event.clientX, event.clientY);
+    }
+
+    handleKeyDown(event) {
+        const chip = event.target.closest('.result-panel-chip');
+        if (!chip || !(event.key == 'ContextMenu' || (event.shiftKey && event.key == 'F10'))) return;
+        event.preventDefault();
+        const bounds = chip.getBoundingClientRect();
+        this.openMenu(chip.dataset.field, bounds.left + 12, bounds.bottom);
+    }
+
+    // Show the former PivotPanel commands without keeping controls on every field row.
+    openMenu(field, x, y) {
+        this.closeMenu();
+        const areas = this.state.areas();
+        const area = ResultPanel.Areas.find(item => areas[item.key].includes(field));
+        const index = area ? areas[area.key].indexOf(field) : -1;
+        const disabled = value => value ? ' disabled' : '';
+        const command = (action, icon, label, isDisabled = false) =>
+            `<button type="button" class="result-panel-menu-command" data-action="${action}"${disabled(isDisabled)}>` +
+            `<i class="fa ${icon}"></i>${label}</button>`;
+        const menu = document.createElement('div');
+        menu.className = 'result-panel-menu';
+        menu.innerHTML =
+            command('up', 'fa-angle-up', 'Move Up', !area || index == 0) +
+            command('down', 'fa-angle-down', 'Move Down', !area || index == areas[area.key].length - 1) +
+            command('first', 'fa-angle-double-up', 'Move to Beginning', !area || index == 0) +
+            command('last', 'fa-angle-double-down', 'Move to End', !area || index == areas[area.key].length - 1) +
+            '<div class="result-panel-menu-separator"></div>' +
+            command('area:filters', 'fa-filter', 'Move to Report Filter', area && area.key == 'filters') +
+            command('area:rows', 'fa-bars', 'Move to Row Labels', area && area.key == 'rows') +
+            command('area:columns', 'fa-columns', 'Move to Column Labels', area && area.key == 'columns') +
+            command('area:values', 'fa-bar-chart-o', 'Move to Values', area && area.key == 'values') +
+            '<div class="result-panel-menu-separator"></div>' +
+            command('remove', 'fa-times', 'Remove Field') +
+            '<div class="result-panel-menu-separator"></div>' +
+            command('settings', 'fa-cog', 'Field Settings&hellip;');
+        document.body.appendChild(menu);
+        this.menu = menu;
+        this.menuField = field;
+        const bounds = menu.getBoundingClientRect();
+        menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - bounds.width - 4))}px`;
+        menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - bounds.height - 4))}px`;
+    }
+
+    runMenuCommand(action) {
+        const field = this.menuField;
+        const areas = this.state.areas();
+        const area = ResultPanel.Areas.find(item => areas[item.key].includes(field));
+        const index = area ? areas[area.key].indexOf(field) : -1;
+        this.closeMenu();
+        if (action == 'settings') return this.openSettings(field);
+        if (action == 'remove') return this.state.assign(field, null);
+        if (action.startsWith('area:')) return this.state.assign(field, action.slice(5));
+        if (!area) return;
+        if (action == 'up') return this.state.assign(field, area.key, index - 1);
+        if (action == 'down') return this.state.assign(field, area.key, index + 1);
+        if (action == 'first') return this.state.assign(field, area.key, 0);
+        if (action == 'last') return this.state.assign(field, area.key, areas[area.key].length);
+    }
+
+    closeMenu() {
+        if (this.menu) this.menu.remove();
+        this.menu = null;
+        this.menuField = null;
     }
 
     openSettings(field) {
@@ -170,6 +244,7 @@ export class ResultPanel {
     refresh() {
         const root = this.root();
         if (!root) return;
+        this.closeMenu();
         const areas = this.state.areas();
         const placed = new Set(Object.keys(areas).reduce((all, key) => all.concat(areas[key]), []));
         root.querySelector('.result-panel-fields').innerHTML = this.state.fields.map(field =>
@@ -190,10 +265,8 @@ export class ResultPanel {
         const aggregation = ResultLayoutState.Aggregation;
         const suffix = area == 'values' ? ` (${aggregation.charAt(0).toUpperCase()}${aggregation.slice(1)})` : '';
         const label = escapeHtml(header) + escapeHtml(suffix);
-        return `<li class="result-panel-chip" data-field="${escapeHtml(field)}">` +
-            `<span class="result-panel-chip-label">${label}</span>` +
-            `<button type="button" class="result-panel-settings" aria-label="Settings for ${escapeHtml(header)}" title="Field settings">&#9881;</button>` +
-            `<button type="button" class="result-panel-remove" aria-label="Remove ${escapeHtml(header)}" title="Remove field">&times;</button></li>`;
+        return `<li class="result-panel-chip" data-field="${escapeHtml(field)}" tabindex="0" title="Right-click for field commands">` +
+            `<span class="result-panel-chip-label">${label}</span></li>`;
     }
 
     destroy() {
@@ -204,7 +277,11 @@ export class ResultPanel {
         if (root) {
             root.removeEventListener('change', this.onChangeEvent);
             root.removeEventListener('click', this.onClickEvent);
+            root.removeEventListener('contextmenu', this.onContextMenuEvent);
+            root.removeEventListener('keydown', this.onKeyDownEvent);
         }
+        document.removeEventListener('click', this.onDocumentClickEvent);
+        this.closeMenu();
         if (this.lists) {
             // jQuery UI keeps the widget under this data key and calling destroy without one throws.
             this.lists.filter((index, list) => !!window.jQuery.data(list, 'ui-sortable')).sortable('destroy');

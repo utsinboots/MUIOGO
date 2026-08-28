@@ -21,6 +21,8 @@ export class ResultGrid {
 
     // Display the aggregated rows and columns without changing their values or identifiers.
     render(result, numberFormat = 'n2') {
+        // A pending variable change can resolve after the page moved on and removed the host.
+        if (!document.querySelector(this.selector)) return;
         const view = this.view(result);
         this.result = result;
         this.valueColumns = view.columns;

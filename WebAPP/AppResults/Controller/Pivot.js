@@ -9,8 +9,9 @@ import { DataModelResult } from "../../Classes/DataModelResult.Class.js";
 import { DefaultObj } from "../../Classes/DefaultObj.Class.js";
 import { ResultAggregator } from "../../Classes/ResultAggregator.Class.js";
 import { ResultGrid } from "../../Classes/ResultGrid.Class.js";
-import { TempResultParityChecker } from "../../Classes/TempResultParityChecker.Class.js";
-import { WijmoResultAdapter } from "../../Classes/WijmoResultAdapter.Class.js";
+import { ResultLayoutState } from "../../Classes/ResultLayoutState.Class.js";
+import { ResultPanel } from "../../Classes/ResultPanel.Class.js";
+import { ResultFieldSettings } from "../../Classes/ResultFieldSettings.Class.js";
 
 const ECHARTS_URL = 'References/echarts/echarts-6.1.0.min.js';
 
@@ -45,6 +46,40 @@ export default class Pivot {
             [...text].map(character => superscript[character] || character).join(''))
             .replace(/<[^>]*>/g, '')
             .replace(/&(amp|lt|gt|quot|apos|nbsp);/gi, (_, name) => entities[name.toLowerCase()]);
+    }
+
+    // Default column field per result group, matching the layout MUIO opened each variable with.
+    static GROUP_COLUMNS = Object.freeze({
+        R: 'Optimal', RY: null, RYE: 'Emi', RYCn: 'Con', RYS: 'Stg',
+        RYCTs: 'Comm', RYC: 'Comm', RYTC: 'Comm', RYTCMTs: 'Comm'
+    });
+
+    // Catalogue the fields present in the pivot records. Wijmo derived headers from the binding by
+    // splitting camel case, and saved views reference those headers, so the same split is kept.
+    static fieldCatalogue(items) {
+        const sample = (items || [])[0] || {};
+        return Object.keys(sample).map(name => ({
+            field: name,
+            header: name.replace(/([a-z])([A-Z])/g, '$1 $2'),
+            isMeasure: name == 'Value'
+        }));
+    }
+
+    // Place the fields a group opens with, replacing the per-group blocks the engine needed.
+    static applyDefaultLayout(state, group) {
+        const column = Object.prototype.hasOwnProperty.call(Pivot.GROUP_COLUMNS, group)
+            ? Pivot.GROUP_COLUMNS[group] : 'Tech';
+        return state.defer(current => {
+            ['rows', 'columns', 'filters', 'values'].forEach(area => current.areas()[area].splice(0));
+            // Filters apply wherever their field sits, so clear them too or one carries into the
+            // next variable and silently narrows it.
+            Object.keys(current.filters).forEach(name => current.setFilter(name, null));
+            Object.keys(current.descending).forEach(name => current.setDescending(name, false));
+            current.assign('Case', 'rows');
+            if (group != 'R') current.assign('Year', 'rows');
+            if (column) current.assign(column, 'columns');
+            current.assign('Value', 'values');
+        });
     }
 
     // Fill a native select from a list of records, keeping the current value when it still exists.
@@ -375,11 +410,20 @@ export default class Pivot {
 
     // Refresh the open-source grid from the same active layout used by the Wijmo panel.
     static renderResultGrid(app, model) {
-        const configuration = WijmoResultAdapter.configuration(app.engine, model.pivotData);
+        const configuration = app.state.configuration();
         app.resultConfiguration = configuration;
         app.aggregateResult = ResultAggregator.aggregate(model.pivotData, configuration);
-        const valueField = Array.from(app.engine.valueFields)[0];
-        app.resultGrid.render(app.aggregateResult, valueField ? valueField.format : model.stgDecimalPoints);
+        app.resultGrid.render(app.aggregateResult, app.state.numberFormat);
+    }
+
+    // Distinct values of one field, for the filter list in the field settings dialog.
+    static fieldValues(items, field) {
+        const values = new Map();
+        (items || []).forEach(item => {
+            const value = ResultAggregator.keyValue(item[field]);
+            values.set(ResultAggregator.keyID([value]), value);
+        });
+        return Array.from(values.values());
     }
 
     // Render each Results output only after the active layout has finished updating.
@@ -393,6 +437,26 @@ export default class Pivot {
         if (app && app.resultGrid) app.resultGrid.destroy();
     }
 
+    static disposeResultPanel(app = Pivot.activeApp) {
+        if (app && app.panel) app.panel.destroy();
+        ResultFieldSettings.destroy();
+    }
+
+    // Surface anything a saved view asked for that the open-source layout does not reproduce.
+    static reportLayoutWarnings(state) {
+        if (state.warnings.length) {
+            Message.smallBoxWarning('Saved view', state.warnings.map(warning => escapeHtml(warning)).join('<br>'), 6000);
+        }
+    }
+
+    // Keep the totals controls aligned with the active default or saved-view layout.
+    static syncTotalsControls(state) {
+        const rowTotals = document.querySelector('#showRowTotals');
+        const columnTotals = document.querySelector('#showColumnTotals');
+        if (rowTotals) rowTotals.checked = state.totals.rows != ResultAggregator.ShowTotals.None;
+        if (columnTotals) columnTotals.checked = state.totals.columns != ResultAggregator.ShowTotals.None;
+    }
+
     static bindChartLifecycle(app) {
         $(window).off('.muiopivot');
         $(window).on('resize.muiopivot', () => {
@@ -402,6 +466,7 @@ export default class Pivot {
             if (window.location.hash == '#/Pivot') return;
             Pivot.disposeChart();
             Pivot.disposeResultGrid(app);
+            Pivot.disposeResultPanel(app);
             if (Pivot.activeApp == app) Pivot.activeApp = null;
             $(window).off('.muiopivot');
         });
@@ -579,94 +644,26 @@ export default class Pivot {
         //     </div>  
         // </div>`;
 
-        //kada mjenjamo case, assertation problem sa wijmo kontrolama
-        if(model.refreshPage){      
-            wijmo.olap.PivotPanel.disposeAll('#pivotPanel');
+        if (model.refreshPage) {
+            Pivot.disposeResultPanel();
             Pivot.disposeResultGrid();
         }
         Pivot.disposeChart();
 
-        // function parseHtmlData(data){
-        //     let props = ['Unit'];
-        //     console.log('item[prop] ', item[prop] )
-        //     data.forEach(item => props.forEach(prop => item[prop] = wijmo.toPlainText(item[prop])))
-        // }
-
         let app = {};
-        app.engine = new wijmo.olap.PivotEngine({
-            //itemsSourceChanged: (s,e) => parseHtmlData(s.collectionView.sourceCollection),
-            itemsSource: model.pivotData,
-            rowFields: ['Case', 'Year'],
-            valueFields: ['Value'],
-            columnFields: ['Tech'],
-            showRowTotals: 'None',
-            showColumnTotals:'None',
+        app.state = new ResultLayoutState(Pivot.fieldCatalogue(model.pivotData), model.stgDecimalPoints);
+        Pivot.applyDefaultLayout(app.state, model.group);
+        model.DEFAULTVIEW = app.state.definition();
 
-        });
-
-        //wijmo.olap.PivotEngine.invalidate()
-        //console.log('app.engine.fields ', app.engine.fields)
-        app.engine.fields.getField('Unit').isContentHtml = true;
-        app.engine.fields.getField('Tech').isContentHtml = true;
-        app.engine.fields.getField('Tech Desc').isContentHtml = true;
-
-
-        model.DEFAULTVIEW = app.engine.viewDefinition;
-
-        app.panel = new wijmo.olap.PivotPanel('#pivotPanel',{
-            itemsSource: app.engine
-        });
-
-        //New fieled formats
-        let _oldEditField = app.engine.editField;
-        app.engine.editField = function(fld) {
-            _oldEditField.call(this, fld);
-            if(fld.dataType !== wijmo.DataType.Number) {
-                return;
+        app.panel = new ResultPanel('#pivotPanel', app.state, {
+            plainText: value => Pivot.plainText(value),
+            fieldValues: field => Pivot.fieldValues(model.pivotData, field),
+            onApply: () => {
+                Pivot.syncTotalsControls(app.state);
+                Pivot.renderResults(app, model);
             }
-            var format = wijmo.Control.getControl('div[wj-part="div-fmt"]');
-            addFormats(format);
-        }
-
-        function addFormats(format) {
-            const view = format.collectionView;
-            var newFmt = view.addNew();
-            newFmt.key = "Float (n3)";
-            newFmt.val = "n3";
-            newFmt.all = true; // always set it to true
-            var newFmt = view.addNew();
-            newFmt.key = "Float (n4)";
-            newFmt.val = "n4";
-            newFmt.all = true; // always set it to true
-            view.commitNew();
-        }
-        ///////////end field formats
-
-
-        //03022025 postavljenje default formata Value grupe u gridu
-        // Access the pivot engine and loop through fields
-        // let decimalpoints = localStorage.getItem("osy-decimalpoints");
-        // if(!decimalpoints){
-        //     decimalpoints = 'n2';
-        // }
-        // console.log('decimalpoints ', decimalpoints)    
-
-        //app.engine.fields.getField('Unit').isContentHtml = true;
-
-        // app.engine.fields.forEach(function (field) {
-        //     //console.log('field ', field)
-        //     if (field.header === 'Value') {
-        //         // Set the format to display numbers with 2 decimal places
-        //         field.format = model.stgDecimalPoints;
-        //     }
-        // });
-
-        //app.engine.valueFields.format =  model.stgDecimalPoints;
-        app.engine.fields.getField('Value').format = model.stgDecimalPoints;
-
-        // Refresh the pivot engine to apply the changes
-        // pivotEngine.refresh();
-
+        });
+        Pivot.syncTotalsControls(app.state);
 
         app.resultGrid = new ResultGrid('#pivotGrid', {
             plainText: value => Pivot.plainText(value),
@@ -676,35 +673,17 @@ export default class Pivot {
                 context.rowKey,
                 context.columnKey
             ),
-            removeField: fieldName => {
-                const field = Array.from(app.engine.fields).find(item => item.binding == fieldName) ||
-                    app.engine.fields.getField(fieldName);
-                if (field) app.engine.removeField(field);
-            },
-            editField: fieldName => {
-                const field = Array.from(app.engine.fields).find(item => item.binding == fieldName) ||
-                    app.engine.fields.getField(fieldName);
-                if (field) app.engine.editField(field);
-            },
+            removeField: fieldName => app.state.assign(fieldName, null),
+            editField: fieldName => ResultFieldSettings.open(fieldName, app.state, {
+                plainText: value => Pivot.plainText(value),
+                fieldValues: field => Pivot.fieldValues(model.pivotData, field)
+            }),
             // Year is the only dimension where reversing the order is meaningful for results.
             sortableFields: ['Year'],
-            // Flip the field's direction; the engine's view update refreshes the grid and the chart.
-            toggleFieldSort: fieldName => {
-                const field = Array.from(app.engine.rowFields).find(item => item.binding == fieldName);
-                if (field) field.descending = !field.descending;
-            }
+            toggleFieldSort: fieldName => app.state.setDescending(fieldName, !app.state.descending[fieldName])
         });
         app.pivotChart = { header: '', chartType: 'column', stacking: 'normal', showLegend: true, pieSeries: '' };
         Pivot.activeApp = app;
-        app.engine.updatedView.addHandler(() => {
-            Pivot.renderResults(app, model);
-            // Compare only after Wijmo finishes its view, so incomplete data cannot report a false failure.
-            TempResultParityChecker.run(app.engine, model.pivotData, {
-                case: model.casename,
-                group: model.group,
-                param: model.param
-            });
-        });
         Pivot.renderResults(app, model);
         Pivot.bindChartLifecycle(app);
 
@@ -790,31 +769,11 @@ export default class Pivot {
             let group = model.group;
             let viewId = DefaultObj.getId('VIEW');
 
-            app.engine.fields.getField('Unit').isContentHtml = true;
-            //ako nije demand jer ne zavisi od T
-            if(param == 'D'){
-                app.engine.fields.getField('Comm').isContentHtml = true;
-                app.engine.fields.getField('Comm Desc').isContentHtml = true;
-            }
-            else if(group == "RYC"){
-                app.engine.fields.getField('Comm').isContentHtml = true;
-                app.engine.fields.getField('Comm Desc').isContentHtml = true;
-            }
-            else if(group == "RYE"){
-                app.engine.fields.getField('Emi').isContentHtml = true;
-                app.engine.fields.getField('Emi Desc').isContentHtml = true;
-            }
-            else{
-                app.engine.fields.getField('Tech').isContentHtml = true;
-                app.engine.fields.getField('Tech Desc').isContentHtml = true;
-            }
-
-
             let POSTDATA = {
                 "osy-viewId": viewId,
                 "osy-viewname": viewname,
                 "osy-viewdesc": desc,
-                "osy-viewdef": app.engine.viewDefinition
+                "osy-viewdef": app.state.definition()
             }
 
             Osemosys.saveView(model.casename, POSTDATA, param)
@@ -854,7 +813,7 @@ export default class Pivot {
                 Pivot.fillSelect('#cmbViews', model.VIEWS, 'osy-viewId', 'osy-viewname', 'null');
                 Osemosys.updateViews(model.casename, viewUpdate, model.param)
                 .then(response => {
-                    app.engine.viewDefinition = model.DEFAULTVIEW;
+                    app.state.apply(model.DEFAULTVIEW);
                     app.pivotChart.header = '';
                     Message.clearMessages();
                     Message.smallBoxInfo('Model message', response.message, 3000);   
@@ -879,14 +838,14 @@ export default class Pivot {
 
         $("#showRowTotals").off('click');
         $("#showRowTotals").click(function (e) {
-            app.engine.showRowTotals = e.target.checked ?
-                wijmo.olap.ShowTotals.Subtotals : wijmo.olap.ShowTotals.None;
+            app.state.setTotals('rows', e.target.checked ?
+                ResultAggregator.ShowTotals.Subtotals : ResultAggregator.ShowTotals.None);
         });
         
         $("#showColumnTotals").off('click');
         $("#showColumnTotals").click(function (e) {
-            app.engine.showColumnTotals = e.target.checked ?
-                wijmo.olap.ShowTotals.Subtotals : wijmo.olap.ShowTotals.None;
+            app.state.setTotals('columns', e.target.checked ?
+                ResultAggregator.ShowTotals.Subtotals : ResultAggregator.ShowTotals.None);
         });
 
         $("#hideLegend").off('click');
@@ -915,108 +874,28 @@ export default class Pivot {
             if (DATA !== null && model.param in DATA && Object.getOwnPropertyNames(DATA[model.param]).length != 0){
                 let pivotData = DataModelResult.getPivot(DATA, model.genData, model.VARIABLES, model.group, model.param);
                 model.pivotData = pivotData;
-                app.engine.itemsSource = model.pivotData;
+                // Swap the catalogue for the new variable, then open it on that group's default layout.
+                app.state.setFields(Pivot.fieldCatalogue(model.pivotData));
+                Pivot.applyDefaultLayout(app.state, model.group);
+                app.state.setNumberFormat(model.stgDecimalPoints);
+                model.DEFAULTVIEW = app.state.definition();
+                app.pivotChart.header = '';
 
-
-                //console.log('pivot source ok')
-                if (model.group == 'R'){
-                    app.engine.columnFields.push('Optimal');
-                    app.engine.rowFields.push('Case');
-                    app.engine.valueFields.push('Value');
-                }
-                else if(model.group == 'RY' ){
-                    app.engine.rowFields.push('Case','Year');
-                    app.engine.valueFields.push('Value');
-                }
-                else if(model.group == 'RYE' ){
-                    app.engine.columnFields.push('Emi');
-                    app.engine.rowFields.push('Case','Year');
-                    app.engine.valueFields.push('Value');
-                }
-                else if(model.group == 'RYCn' ){
-                    app.engine.columnFields.push('Con');
-                    app.engine.rowFields.push('Case','Year');
-                    app.engine.valueFields.push('Value');
-                }
-                else if(model.group == 'RYS' ){
-                    app.engine.columnFields.push('Stg');
-                    app.engine.rowFields.push('Case','Year');
-                    app.engine.valueFields.push('Value');
-                }
-                else if (model.group == 'RYCTs' || model.group == 'RYC'){
-                    app.engine.columnFields.push( 'Comm');
-                    app.engine.rowFields.push('Case','Year');
-                    app.engine.valueFields.push('Value');
-                }
-
-                else if(model.group == "RYTC" || model.group == 'RYTCMTs' ){
-                    //console.log(app.engine.columnFields)
-                    app.engine.columnFields.push('Comm');
-                    //console.log('com tech added')
-                    app.engine.rowFields.push('Case','Year');
-                    app.engine.valueFields.push('Value');
-                }
-                else{
-                    //console.log('else')
-                    app.engine.columnFields.push('Tech');
-                    app.engine.rowFields.push('Case', 'Year');
-                    app.engine.valueFields.push('Value');
-                }
-
-                                //decimal points
-                //console.log('field ', field)
-                // app.engine.fields.forEach(function (field) {
-                //     if (field.header === 'Value') {
-                //         // Set the format to display numbers with 2 decimal places
-                //         field.format = decimalpoints;
-                //     }
-                // });
-
-                //console.log('app.engine.valueFields ', app.engine.valueFields, model.stgDecimalPoints)
-                // app.engine.valueFields.format =  model.stgDecimalPoints;
-                // app.engine.refresh();
-                app.engine.fields.getField('Value').format = model.stgDecimalPoints;
-
-                //console.log('fields ok')
-                //update defaul model
-                model.DEFAULTVIEW = JSON.parse(JSON.stringify(app.engine.viewDefinition));
-                //model.DEFAULTVIEW = app.engine.viewDefinition;
-                app.pivotChart.header = ''; 
-
-                if(view != null){
+                if (view != null) {
                     Html.title(model.casename, model.VARNAMES[model.group][model.param], model.group+' - '+view['osy-viewname'] +' view');
-                    app.engine.viewDefinition = view['osy-viewdef'];
+                    app.state.apply(view['osy-viewdef']);
                     app.pivotChart.header = view['osy-viewname'];
                 }
-                else{
+                else {
                     model.TriggerUpdate = false;
                     document.querySelector('#cmbViews').value = 'null';
                     model.VIEW = 'null';
                     model.TriggerUpdate = true;
                     Html.title(model.casename, model.VARNAMES[model.group][model.param], model.group+' - Default view');
                 }
-                //console.log('view ok')
-                app.engine.fields.getField('Unit').isContentHtml = true;
-                if(model.group != "RYS" && model.group != "RYCTs" && model.group != "RYC" && model.group != "RYE" && model.group != "RYCn" && model.group != "R"  && model.group != "RY"){
-                    app.engine.fields.getField('Tech').isContentHtml = true;
-                    app.engine.fields.getField('Tech Desc').isContentHtml = true;
-                }
-                if(model.group == "RYTC" || model.group == "RYCTs" || model.group == "RYTCMTs" || model.group == "RYC"){
-                    app.engine.fields.getField('Comm').isContentHtml = true;
-                    app.engine.fields.getField('Comm Desc').isContentHtml = true;
-                }
-                if(model.group == "RYTE" || model.group == "RYTEM" || model.group == "RYE"){
-                    app.engine.fields.getField('Emi').isContentHtml = true;
-                    app.engine.fields.getField('Emi Desc').isContentHtml = true;
-                }
-                if(model.group == "RYS"){
-                    app.engine.fields.getField('Stg').isContentHtml = true;
-                    app.engine.fields.getField('Stg Desc').isContentHtml = true;
-                }
-                if(model.group == "RYCn"){
-                    app.engine.fields.getField('Con').isContentHtml = true;
-                    app.engine.fields.getField('Con Desc').isContentHtml = true;
-                }
+                // A filter carried in from a saved view may name values this variable does not have.
+                app.state.pruneFilterValues(model.pivotData);
+                Pivot.reportLayoutWarnings(app.state);
 
                 app.updatingParam = false;
                 Pivot.renderResults(app, model);
@@ -1039,24 +918,9 @@ export default class Pivot {
     static updateView(viewId, app, model){
         model.VIEW = viewId;
         if(model.VIEW == 'null'){
-            app.engine.viewDefinition = model.DEFAULTVIEW;
+            app.state.apply(model.DEFAULTVIEW);
+            app.state.pruneFilterValues(model.pivotData);
             app.pivotChart.header = '';
-            if(model.group != "RYS" && model.group != "RYCTs"){
-                app.engine.fields.getField('Tech').isContentHtml = true;
-                app.engine.fields.getField('Tech Desc').isContentHtml = true;
-            }
-            if(model.group == "RYTC" || model.group == "RYCTs" || model.group == "RYTCMTs"){
-                app.engine.fields.getField('Comm').isContentHtml = true;
-                app.engine.fields.getField('Comm Desc').isContentHtml = true;
-            }
-            if(model.group == "RYTE" || model.group == "RYTEM"){
-                app.engine.fields.getField('Emi').isContentHtml = true;
-                app.engine.fields.getField('Emi Desc').isContentHtml = true;
-            }
-            if(model.group == "RYS"){
-                app.engine.fields.getField('Stg').isContentHtml = true;
-                app.engine.fields.getField('Stg Desc').isContentHtml = true;
-            }
             Html.title(model.casename, model.VARNAMES[model.group][model.param], model.group+' Default view');
         }
         else{
@@ -1077,29 +941,11 @@ export default class Pivot {
                         }
                         else{
                             //console.log('OVDJE RADI HTML!!!')
-                            app.engine.viewDefinition = obj['osy-viewdef'];
+                            app.state.apply(obj['osy-viewdef']);
+                            app.state.pruneFilterValues(model.pivotData);
+                            Pivot.reportLayoutWarnings(app.state);
                             app.pivotChart.header = obj['osy-viewname'];
                             Html.title(model.casename, model.VARNAMES[model.group][model.param], model.group+' - '+obj['osy-viewname'] +' view');
-                            // app.engine.fields.getField('Unit').isContentHtml = true;
-                            // app.engine.fields.getField('Tech').isContentHtml = true;
-                            // app.engine.fields.getField('Tech Desc').isContentHtml = true;
-                            if(model.group != "RYS" && model.group != "RYCTs"){
-                                app.engine.fields.getField('Tech').isContentHtml = true;
-                                app.engine.fields.getField('Tech Desc').isContentHtml = true;
-                            }
-                            if(model.group == "RYTC" || model.group == "RYCTs" || model.group == "RYTCMTs"){
-                                app.engine.fields.getField('Comm').isContentHtml = true;
-                                app.engine.fields.getField('Comm Desc').isContentHtml = true;
-                            }
-                            if(model.group == "RYTE" || model.group == "RYTEM"){
-                                app.engine.fields.getField('Emi').isContentHtml = true;
-                                app.engine.fields.getField('Emi Desc').isContentHtml = true;
-                            }
-                            if(model.group == "RYS"){
-                                app.engine.fields.getField('Stg').isContentHtml = true;
-                                app.engine.fields.getField('Stg Desc').isContentHtml = true;
-                            }
-
                         } 
                     }
                     else{

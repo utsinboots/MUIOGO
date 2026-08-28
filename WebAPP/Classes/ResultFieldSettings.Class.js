@@ -23,19 +23,21 @@ function dialogElement() {
     dialog.setAttribute('role', 'dialog');
     dialog.innerHTML =
         '<div class="modal-dialog" role="document"><div class="modal-content">' +
-        '<div class="modal-header"><button type="button" class="close" data-dismiss="modal" aria-label="Close">' +
-        '<span aria-hidden="true">&times;</span></button>' +
-        '<h4 class="modal-title"></h4></div>' +
+        '<div class="modal-header"><h4 class="modal-title"></h4></div>' +
         '<div class="modal-body">' +
-        '<div class="result-field-section result-field-sort-section"><label class="result-field-label">Sort</label>' +
-        '<label class="result-field-radio"><input type="radio" name="result-field-sort" value="asc"> Ascending</label>' +
-        '<label class="result-field-radio"><input type="radio" name="result-field-sort" value="desc"> Descending</label>' +
-        '</div>' +
-        '<div class="result-field-section result-field-format-section">' +
-        '<label class="result-field-label" for="resultFieldFormat">Number format</label>' +
-        `<select id="resultFieldFormat" class="form-control result-field-format">${NUMBER_FORMATS.map(format =>
-            `<option value="${format}">${format}</option>`).join('')}</select></div>` +
-        '<div class="result-field-section"><label class="result-field-label" for="resultFieldSearch">Filter</label>' +
+        '<div class="result-field-row"><label for="resultFieldHeader">Header:</label>' +
+        '<input id="resultFieldHeader" class="form-control result-field-header" type="text" readonly></div>' +
+        '<div class="result-field-row"><label>Summary:</label><input class="form-control result-field-summary" type="text" readonly></div>' +
+        '<div class="result-field-row"><label>Show As:</label><input class="form-control" type="text" value="No calculation" readonly></div>' +
+        '<div class="result-field-row"><label>Weigh by:</label><input class="form-control" type="text" value="(none)" readonly></div>' +
+        '<div class="result-field-row result-field-sort-section"><label for="resultFieldSort">Sort:</label>' +
+        '<select id="resultFieldSort" class="form-control result-field-sort"><option value="asc">Ascending</option>' +
+        '<option value="desc">Descending</option></select></div>' +
+        '<div class="result-field-row"><label>Filter:</label><div class="result-field-filter-actions">' +
+        '<button type="button" class="btn btn-default result-field-edit">Edit&hellip;</button>' +
+        '<button type="button" class="btn btn-default result-field-clear">Clear</button></div></div>' +
+        '<div class="result-field-filter-editor" hidden>' +
+        '<label class="sr-only" for="resultFieldSearch">Search filter values</label>' +
         '<input id="resultFieldSearch" type="text" class="form-control result-field-search" placeholder="Search values">' +
         '<div class="result-field-actions">' +
         '<button type="button" class="btn btn-link btn-sm result-field-all">Select all</button>' +
@@ -43,9 +45,14 @@ function dialogElement() {
         '<span class="result-field-count"></span></div>' +
         '<div class="result-field-values"></div>' +
         '<p class="result-field-hint">Select at least one value to apply.</p></div>' +
+        '<div class="result-field-row result-field-format-section"><label for="resultFieldFormat">Format:</label>' +
+        `<select id="resultFieldFormat" class="form-control result-field-format">${NUMBER_FORMATS.map(format =>
+            `<option value="${format}">${format == 'n0' ? 'Integer (n0)' : `Number (${format})`}</option>`).join('')}</select></div>` +
+        '<div class="result-field-row result-field-sample-row"><label>Sample:</label>' +
+        '<input class="form-control result-field-sample" type="text" readonly></div>' +
         '</div><div class="modal-footer">' +
         '<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>' +
-        '<button type="button" class="btn btn-primary result-field-apply">Apply</button>' +
+        '<button type="button" class="btn btn-default result-field-apply">OK</button>' +
         '</div></div></div>';
     document.body.appendChild(dialog);
     dialog.addEventListener('input', handlers.input);
@@ -110,13 +117,19 @@ export class ResultFieldSettings {
     show() {
         const dialog = dialogElement();
         this.dialog = dialog;
-        dialog.querySelector('.modal-title').textContent = this.text(this.entry.header);
+        dialog.querySelector('.modal-title').textContent = `Field settings: ${this.text(this.entry.header)}`;
+        dialog.querySelector('.result-field-header').value = this.text(this.entry.header);
+        dialog.querySelector('.result-field-summary').value = this.entry.isMeasure ? 'Sum' : 'Count';
         // Sorting a measure would order rows by nothing meaningful, so it is offered for dimensions.
         dialog.querySelector('.result-field-sort-section').hidden = this.entry.isMeasure === true;
         dialog.querySelector('.result-field-format-section').hidden = this.entry.isMeasure !== true;
-        dialog.querySelector(`input[name="result-field-sort"][value="${this.descending ? 'desc' : 'asc'}"]`).checked = true;
+        dialog.querySelector('.result-field-sample-row').hidden = this.entry.isMeasure !== true;
+        dialog.querySelector('.result-field-sort').value = this.descending ? 'desc' : 'asc';
         dialog.querySelector('.result-field-format').value = this.state.numberFormat;
+        this.updateSample();
         dialog.querySelector('.result-field-search').value = '';
+        dialog.querySelector('.result-field-filter-editor').hidden = true;
+        dialog.querySelector('.result-field-clear').disabled = !this.state.filters[this.entry.field];
         this.renderValues();
         if (window.jQuery && typeof window.jQuery(dialog).modal == 'function') window.jQuery(dialog).modal('show');
         else dialog.style.display = 'block';
@@ -130,6 +143,7 @@ export class ResultFieldSettings {
     }
 
     handleChange(event) {
+        if (event.target.closest('.result-field-format')) this.updateSample();
         const box = event.target.closest('.result-field-value input');
         // Searching only hides rows, so the checked set is edited here and nowhere else.
         if (!box) return;
@@ -142,7 +156,27 @@ export class ResultFieldSettings {
         // Select all and none act on the rows currently shown, which is every row when not searching.
         if (event.target.closest('.result-field-all')) return this.setVisible(true);
         if (event.target.closest('.result-field-none')) return this.setVisible(false);
+        if (event.target.closest('.result-field-edit')) {
+            this.dialog.querySelector('.result-field-filter-editor').hidden = false;
+            this.dialog.querySelector('.result-field-search').focus();
+            return;
+        }
+        if (event.target.closest('.result-field-clear')) {
+            this.selected = new Set(this.values.keys());
+            event.target.closest('.result-field-clear').disabled = true;
+            this.renderValues();
+            return;
+        }
         if (event.target.closest('.result-field-apply')) return this.apply();
+    }
+
+    updateSample() {
+        const format = this.dialog.querySelector('.result-field-format').value;
+        const decimals = Number(format.slice(1)) || 0;
+        this.dialog.querySelector('.result-field-sample').value = Number(1234.5678).toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        });
     }
 
     visibleKeys() {
@@ -181,7 +215,7 @@ export class ResultFieldSettings {
     apply() {
         if (this.values.size > 0 && this.selected.size == 0) return;
         const field = this.entry.field;
-        const descending = this.dialog.querySelector('input[name="result-field-sort"]:checked').value == 'desc';
+        const descending = this.dialog.querySelector('.result-field-sort').value == 'desc';
         const format = this.dialog.querySelector('.result-field-format').value;
         this.state.defer(state => {
             if (this.entry.isMeasure) state.setNumberFormat(format);
