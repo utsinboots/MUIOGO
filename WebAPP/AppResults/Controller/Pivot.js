@@ -47,59 +47,40 @@ export default class Pivot {
             .replace(/&(amp|lt|gt|quot|apos|nbsp);/gi, (_, name) => entities[name.toLowerCase()]);
     }
 
-    // Organize pivot results into categories and series for chart rendering
+    // Organize aggregated results into categories and series for chart rendering.
     static getChartModel(app) {
-        const items = app.engine.pivotView.items || [];
-        const categoryValues = [];
-        const categoryIndexes = new Map();
-        const series = [];
-        const seriesIndexes = new Map();
+        const result = app.aggregateResult;
+        if (!result) return { categories: [], categoryLabels: [], series: [], rowFields: [], categoryTuples: [] };
 
-        items.forEach(item => {
-            Object.keys(item).filter(binding => binding != '$rowKey').forEach(binding => {
-                const keys = app.engine.getKeys(item, binding);
-                const rowValues = keys && keys.rowKey ? keys.rowKey.values : [];
-                const columnValues = keys && keys.colKey ? keys.colKey.values : [];
+        // Row keys are the categories and column keys the series, both already ordered by the aggregator.
+        const categoryTuples = result.rowKeys.map(key => key.map(value => Pivot.plainText(value)));
+        const rowIndexes = new Map(result.rowKeys.map((key, index) => [ResultAggregator.keyID(key), index]));
+        const columnIndexes = new Map(result.columnKeys.map((key, index) => [ResultAggregator.keyID(key), index]));
+        const valueField = result.valueFields.length ? result.valueFields[0].field : 'Value';
+        const series = result.columnKeys.map(key => ({
+            name: Pivot.plainText(key.join(' - ')) || valueField,
+            values: Array(result.rowKeys.length).fill(null)
+        }));
 
-                if (app.engine.rowFields.length && rowValues.length != app.engine.rowFields.length) return;
-                if (app.engine.columnFields.length && columnValues.length != app.engine.columnFields.length) return;
-
-                const categoryKey = JSON.stringify(rowValues);
-                let categoryIndex = categoryIndexes.get(categoryKey);
-                if (categoryIndex == null) {
-                    categoryIndex = categoryValues.length;
-                    categoryIndexes.set(categoryKey, categoryIndex);
-                    categoryValues.push(rowValues.map(value => Pivot.plainText(value)));
-                    series.forEach(itemSeries => itemSeries.values.push(null));
-                }
-
-                let seriesIndex = seriesIndexes.get(binding);
-                if (seriesIndex == null) {
-                    const fallback = app.engine.valueFields.length ? app.engine.valueFields[0].header : 'Value';
-                    seriesIndex = series.length;
-                    seriesIndexes.set(binding, seriesIndex);
-                    series.push({
-                        name: Pivot.plainText(columnValues.join(' - ')) || fallback,
-                        values: Array(categoryValues.length).fill(null)
-                    });
-                }
-
-                const rawValue = item[binding];
-                const value = rawValue == null ? null : Number(rawValue);
-                series[seriesIndex].values[categoryIndex] = Number.isFinite(value) ? value : null;
-            });
+        // Only regular cells appear here; the aggregator keeps subtotals in a separate collection.
+        result.cells.forEach(cell => {
+            const row = rowIndexes.get(ResultAggregator.keyID(cell.rowKey));
+            const column = columnIndexes.get(ResultAggregator.keyID(cell.columnKey));
+            if (row == null || column == null) return;
+            const value = cell.values[valueField];
+            series[column].values[row] = Number.isFinite(value) ? value : null;
         });
 
-        const rowFieldNames = Array.from(app.engine.rowFields).map(field => field.header);
+        const rowFieldNames = result.rowFields.slice();
         const displayedFields = rowFieldNames.map((_, index) => index)
             .filter(index => rowFieldNames[index] != 'Case');
         if (!displayedFields.length && rowFieldNames.length) displayedFields.push(rowFieldNames.length - 1);
-        const categories = categoryValues.map(values => values.join(' - ') || 'Value');
-        const categoryLabels = categoryValues.map(values =>
+        const categories = categoryTuples.map(values => values.join(' - ') || 'Value');
+        const categoryLabels = categoryTuples.map(values =>
             displayedFields.map(index => values[index]).join(' - ') || 'Value');
 
         // rowFields and categoryTuples drive the grouped axis: the innermost field labels each bar.
-        return { categories, categoryLabels, series, rowFields: rowFieldNames, categoryTuples: categoryValues };
+        return { categories, categoryLabels, series, rowFields: rowFieldNames, categoryTuples };
     }
 
     // Category axis: the innermost field labels each bar, outer fields become nested bracket axes.
@@ -232,9 +213,10 @@ export default class Pivot {
             const option = document.createElement('option');
             option.value = item.name;
             option.textContent = item.name;
-            option.selected = item.name == selectedName;
             return option.outerHTML;
         }).join('');
+        // outerHTML serializes the selected attribute, not the property, so set the live value here.
+        control.value = selectedName;
     }
 
     static getChartOption(app, model) {
