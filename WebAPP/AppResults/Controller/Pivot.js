@@ -61,7 +61,8 @@ export default class Pivot {
         return Object.keys(sample).map(name => ({
             field: name,
             header: name.replace(/([a-z])([A-Z])/g, '$1 $2'),
-            isMeasure: name == 'Value'
+            isMeasure: name == 'Value',
+            isNumeric: (items || []).some(item => typeof item[name] == 'number' && Number.isFinite(item[name]))
         }));
     }
 
@@ -70,15 +71,15 @@ export default class Pivot {
         const column = Object.prototype.hasOwnProperty.call(Pivot.GROUP_COLUMNS, group)
             ? Pivot.GROUP_COLUMNS[group] : 'Tech';
         return state.defer(current => {
-            ['rows', 'columns', 'filters', 'values'].forEach(area => current.areas()[area].splice(0));
-            // Filters apply wherever their field sits, so clear them too or one carries into the
-            // next variable and silently narrows it.
+            current.resetFieldSettings();
+            ['rows', 'columns', 'filters', 'values'].forEach(area => current.getAreas()[area].splice(0));
+            // Clear filters with the layout so one variable cannot silently restrict the next.
             Object.keys(current.filters).forEach(name => current.setFilter(name, null));
             Object.keys(current.descending).forEach(name => current.setDescending(name, false));
-            current.assign('Case', 'rows');
-            if (group != 'R') current.assign('Year', 'rows');
-            if (column) current.assign(column, 'columns');
-            current.assign('Value', 'values');
+            current.assignField('Case', 'rows');
+            if (group != 'R') current.assignField('Year', 'rows');
+            if (column) current.assignField(column, 'columns');
+            current.assignField('Value', 'values');
         });
     }
 
@@ -225,27 +226,27 @@ export default class Pivot {
         }));
     }
 
-    static getDecimalPlaces(format) {
-        const match = String(format || '').match(/n(\d+)/i);
-        return match ? Number(match[1]) : 2;
-    }
-
-    static formatChartValue(value, model, percent = false) {
+    static formatChartValue(value, format, percent = false, currency = 'USD') {
         if (value == null || value === '' || !Number.isFinite(Number(value))) return '';
-        const formatted = Number(value).toLocaleString(undefined, {
-            minimumFractionDigits: Pivot.getDecimalPlaces(model.stgDecimalPoints),
-            maximumFractionDigits: Pivot.getDecimalPlaces(model.stgDecimalPoints)
-        });
+        const match = /^(n|c|p)(\d*)(,*)$/i.exec(format || '');
+        const decimals = match && match[2] !== '' ? Number(match[2]) : 2;
+        const scaled = Number(value) / Math.pow(1000, match ? match[3].length : 0);
+        const options = { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+        if (!percent && match && match[1].toLowerCase() == 'c') {
+            options.style = 'currency';
+            options.currency = currency;
+        } else if (!percent && match && match[1].toLowerCase() == 'p') options.style = 'percent';
+        const formatted = scaled.toLocaleString(undefined, options);
         return percent ? `${formatted}%` : formatted;
     }
 
-    static formatAxisTooltip(params, model, percent) {
+    static formatAxisTooltip(params, format, percent, currency) {
         const items = Array.isArray(params) ? params : [params];
         if (!items.length) return '';
         const lines = [escapeHtml(Pivot.plainText(items[0].axisValueLabel || items[0].name))];
         items.forEach(item => {
             const value = Array.isArray(item.value) ? item.value[item.value.length - 1] : item.value;
-            lines.push(`${item.marker}${escapeHtml(Pivot.plainText(item.seriesName))}: ${Pivot.formatChartValue(value, model, percent)}`);
+            lines.push(`${item.marker}${escapeHtml(Pivot.plainText(item.seriesName))}: ${Pivot.formatChartValue(value, format, percent, currency)}`);
         });
         return lines.join('<br>');
     }
@@ -272,6 +273,9 @@ export default class Pivot {
         const chartModel = Pivot.getChartModel(app);
         const chartType = app.pivotChart.chartType;
         const percent = app.pivotChart.stacking == 'percent';
+        const valueField = app.aggregateResult && app.aggregateResult.valueFields[0];
+        const valueFormat = valueField ? valueField.format : model.stgDecimalPoints;
+        const currency = model.genData['osy-currency'] || 'USD';
         const chartSeries = percent ? Pivot.getPercentSeries(chartModel.series) : chartModel.series;
         Pivot.updatePieSeriesControl(app, chartSeries);
 
@@ -286,7 +290,7 @@ export default class Pivot {
                 tooltip: {
                     trigger: 'item',
                     confine: true,
-                    formatter: item => `${item.marker}${escapeHtml(Pivot.plainText(item.name))}: ${Pivot.formatChartValue(item.value, model, percent)}`
+                    formatter: item => `${item.marker}${escapeHtml(Pivot.plainText(item.name))}: ${Pivot.formatChartValue(item.value, valueFormat, percent, currency)}`
                 },
                 legend: {
                 show: app.pivotChart.showLegend,
@@ -330,7 +334,7 @@ export default class Pivot {
         const legendHeight = app.pivotChart.showLegend ? Pivot.getLegendHeight(chartSeries) : 12;
         const axisValue = {
             type: 'value',
-            axisLabel: { formatter: value => Pivot.formatChartValue(value, model, percent) }
+            axisLabel: { formatter: value => Pivot.formatChartValue(value, valueFormat, percent, currency) }
         };
 
         return {
@@ -341,10 +345,10 @@ export default class Pivot {
                 confine: true,
                 extraCssText: 'max-width: 320px; max-height: 70%; overflow-y: auto;',
                 formatter: params => {
-                    if (!itemTooltip) return Pivot.formatAxisTooltip(params, model, percent);
+                    if (!itemTooltip) return Pivot.formatAxisTooltip(params, valueFormat, percent, currency);
                     const value = Array.isArray(params.value) ? params.value[params.value.length - 1] : params.value;
                     return `${params.marker}${escapeHtml(Pivot.plainText(params.seriesName))}<br>` +
-                        `${escapeHtml(Pivot.plainText(params.name))}: ${Pivot.formatChartValue(value, model, percent)}`;
+                        `${escapeHtml(Pivot.plainText(params.name))}: ${Pivot.formatChartValue(value, valueFormat, percent, currency)}`;
                 }
             },
             legend: {
@@ -657,6 +661,7 @@ export default class Pivot {
 
         app.panel = new ResultPanel('#pivotPanel', app.state, {
             plainText: value => Pivot.plainText(value),
+            currency: model.genData['osy-currency'] || 'USD',
             fieldValues: field => Pivot.fieldValues(model.pivotData, field),
             onApply: () => {
                 Pivot.syncTotalsControls(app.state);
@@ -667,15 +672,17 @@ export default class Pivot {
 
         app.resultGrid = new ResultGrid('#pivotGrid', {
             plainText: value => Pivot.plainText(value),
+            currency: model.genData['osy-currency'] || 'USD',
             getDetail: context => ResultAggregator.getDetail(
                 model.pivotData,
                 app.resultConfiguration,
                 context.rowKey,
                 context.columnKey
             ),
-            removeField: fieldName => app.state.assign(fieldName, null),
+            removeField: fieldName => app.state.assignField(fieldName, null),
             editField: fieldName => ResultFieldSettings.open(fieldName, app.state, {
                 plainText: value => Pivot.plainText(value),
+                currency: model.genData['osy-currency'] || 'USD',
                 fieldValues: field => Pivot.fieldValues(model.pivotData, field)
             }),
             // Year is the only dimension where reversing the order is meaningful for results.

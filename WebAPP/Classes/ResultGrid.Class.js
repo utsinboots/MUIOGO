@@ -9,12 +9,14 @@ export class ResultGrid {
         this.selector = selector;
         this.options = options;
         this.table = null;
+        this.tableReady = false;
         this.detailTable = null;
         this.detailDialog = null;
         this.result = null;
         this.valueColumns = [];
         this.columnSignature = '';
         this.numberFormat = 'n2';
+        this.currency = options.currency || 'USD';
         this.autoScrollCleanup = null;
         this.clipboardCleanup = null;
     }
@@ -29,9 +31,9 @@ export class ResultGrid {
         this.numberFormat = numberFormat;
         const contextMenu = (event, cell) => this.cellMenu(cell);
         const columns = result.rowFields.map((field, index) => ({
-            title: escapeHtml(this.displayText(field)),
-            titleDownload: this.displayText(field),
-            titleClipboard: this.displayText(field),
+            title: escapeHtml(this.displayText((result.rowHeaders || [])[index] || field)),
+            titleDownload: this.displayText((result.rowHeaders || [])[index] || field),
+            titleClipboard: this.displayText((result.rowHeaders || [])[index] || field),
             field: `row_${index}`,
             formatter: cell => this.rowField(cell, index),
             accessorClipboard: (value, data) => data[`row_${index}_display`],
@@ -64,8 +66,8 @@ export class ResultGrid {
         // Rebuild columns when field labels, totals, or numeric formatting change.
         const columnSignature = JSON.stringify({
             format: numberFormat,
-            rows: result.rowFields,
-            columns: view.columns.map(entry => [entry.key, entry.isTotal === true])
+            rows: result.rowFields.map((field, index) => [field, (result.rowHeaders || [])[index] || field]),
+            columns: view.columns.map(entry => [entry.key, this.keyLabel(entry), entry.isTotal === true])
         });
 
         if (this.table && this.columnSignature != columnSignature) {
@@ -75,6 +77,7 @@ export class ResultGrid {
             if (this.clipboardCleanup) this.clipboardCleanup();
             this.table.destroy();
             this.table = null;
+            this.tableReady = false;
         }
         this.columnSignature = columnSignature;
         if (this.table) {
@@ -124,6 +127,7 @@ export class ResultGrid {
         this.table.on('renderComplete', () => this.paintRangeHighlight());
         this.table.on('rangeChanged', () => this.paintRangeHighlight());
         this.table.on('tableBuilt', () => {
+            this.tableReady = true;
             this.bindRangeAutoScroll();
             this.bindRangeClipboard();
         });
@@ -132,7 +136,7 @@ export class ResultGrid {
     // Mark the selected columns' headers and each row's innermost field cell, from the current ranges.
     paintRangeHighlight() {
         const root = document.querySelector(this.selector);
-        if (!root || !this.table) return;
+        if (!root || !this.table || !this.tableReady) return;
         this.clearSelectionHighlight();
 
         const leafField = `row_${this.result.rowFields.length - 1}`;
@@ -177,7 +181,8 @@ export class ResultGrid {
         if (!rows.length || !columns.length) return null;
 
         const fieldCount = this.result.rowFields.length;
-        const header = this.result.rowFields.map(field => this.displayText(field))
+        const header = this.result.rowFields.map((field, index) =>
+            this.displayText((this.result.rowHeaders || [])[index] || field))
             .concat(columns.map(column => column.getDefinition().titleClipboard || ''));
         const lines = [header.join('\t')];
         rows.forEach(row => {
@@ -251,11 +256,12 @@ export class ResultGrid {
         const columns = result.valueFields.length
             ? this.orderedEntries(result.columnKeys, result.totals.columnKeys)
             : [];
+        const valueField = result.valueFields.length ? result.valueFields[0].field : null;
         const groups = this.rowGroups(rows, result.rowFields.length);
         const cells = new Map();
         [result.cells, result.totals.cells].forEach(list => list.forEach(cell => {
             cells.set(ResultAggregator.cellID(ResultAggregator.keyID(cell.rowKey), ResultAggregator.keyID(cell.columnKey)),
-                cell.values.Value);
+                valueField ? cell.values[valueField] : null);
         }));
         // Build displayed row and column identifiers once instead of once per table cell.
         const columnIDs = columns.map(column => ResultAggregator.keyID(column.key));
@@ -377,7 +383,7 @@ export class ResultGrid {
     }
 
     keyLabel(entry) {
-        if (!entry.key.length) return 'Value';
+        if (!entry.key.length) return this.result && this.result.valueFields.length ? this.result.valueFields[0].header : 'Value';
         return entry.key.join(' / ') + (entry.isTotal ? ' Total' : '');
     }
 
@@ -506,7 +512,7 @@ export class ResultGrid {
 
     // Remove grid-owned ranges before Tabulator replaces the elements they reference.
     clearRangeSelection() {
-        if (this.table) (this.table.getRanges() || []).forEach(range => range.remove());
+        if (this.table && this.tableReady) (this.table.getRanges() || []).forEach(range => range.remove());
         const root = document.querySelector(this.selector);
         const selection = window.getSelection ? window.getSelection() : null;
         if (root && selection && selection.rangeCount &&
@@ -515,15 +521,24 @@ export class ResultGrid {
         }
     }
 
-    // Match the configured Wijmo-style decimal precision for displayed values.
+    // Format numbers with the MUIO field format while leaving First/Last text values intact.
     number(value, format) {
         if (value === null || value === undefined) return '';
-        const match = /^n(\d+)$/.exec(format || '');
-        const decimals = match ? Number(match[1]) : 2;
-        return Number(value).toLocaleString(undefined, {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return this.displayText(value);
+        const match = /^(n|c|p)(\d*)(,*)$/.exec(format || '');
+        if (!match) return number.toLocaleString();
+        const decimals = match[2] === '' ? 2 : Number(match[2]);
+        const scaled = number / Math.pow(1000, match[3].length);
+        const options = {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals
-        });
+        };
+        if (match[1] == 'c') {
+            options.style = 'currency';
+            options.currency = this.currency;
+        } else if (match[1] == 'p') options.style = 'percent';
+        return scaled.toLocaleString(undefined, options);
     }
 
     // Neutralise formula injection: Excel and Calc execute cells starting with = + - @.
@@ -544,6 +559,7 @@ export class ResultGrid {
         if (this.detailTable) this.detailTable.destroy();
         if (this.detailDialog) this.detailDialog.remove();
         this.table = null;
+        this.tableReady = false;
         this.detailTable = null;
         this.detailDialog = null;
         this.columnSignature = '';

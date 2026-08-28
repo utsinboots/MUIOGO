@@ -1,6 +1,5 @@
 import { escapeHtml } from "./Html.Class.js";
 import { ResultFieldSettings } from "./ResultFieldSettings.Class.js";
-import { ResultLayoutState } from "./ResultLayoutState.Class.js";
 
 const PANEL_AREAS = Object.freeze([
     Object.freeze({ key: 'filters', label: 'Filters', glyph: '▼' }),
@@ -108,7 +107,7 @@ export class ResultPanel {
     // Show the former PivotPanel commands without keeping controls on every field row.
     openMenu(field, x, y) {
         this.closeMenu();
-        const areas = this.state.areas();
+        const areas = this.state.getAreas();
         const area = ResultPanel.Areas.find(item => areas[item.key].includes(field));
         const index = area ? areas[area.key].indexOf(field) : -1;
         const disabled = value => value ? ' disabled' : '';
@@ -141,18 +140,18 @@ export class ResultPanel {
 
     runMenuCommand(action) {
         const field = this.menuField;
-        const areas = this.state.areas();
+        const areas = this.state.getAreas();
         const area = ResultPanel.Areas.find(item => areas[item.key].includes(field));
         const index = area ? areas[area.key].indexOf(field) : -1;
         this.closeMenu();
         if (action == 'settings') return this.openSettings(field);
-        if (action == 'remove') return this.state.assign(field, null);
-        if (action.startsWith('area:')) return this.state.assign(field, action.slice(5));
+        if (action == 'remove') return this.state.assignField(field, null);
+        if (action.startsWith('area:')) return this.state.assignField(field, action.slice(5));
         if (!area) return;
-        if (action == 'up') return this.state.assign(field, area.key, index - 1);
-        if (action == 'down') return this.state.assign(field, area.key, index + 1);
-        if (action == 'first') return this.state.assign(field, area.key, 0);
-        if (action == 'last') return this.state.assign(field, area.key, areas[area.key].length);
+        if (action == 'up') return this.state.assignField(field, area.key, index - 1);
+        if (action == 'down') return this.state.assignField(field, area.key, index + 1);
+        if (action == 'first') return this.state.assignField(field, area.key, 0);
+        if (action == 'last') return this.state.assignField(field, area.key, areas[area.key].length);
     }
 
     closeMenu() {
@@ -164,7 +163,8 @@ export class ResultPanel {
     openSettings(field) {
         ResultFieldSettings.open(field, this.state, {
             fieldValues: this.options.fieldValues,
-            plainText: this.options.plainText
+            plainText: this.options.plainText,
+            currency: this.options.currency
         });
     }
 
@@ -193,22 +193,22 @@ export class ResultPanel {
             dropped[area.key] = Array.from(list.querySelectorAll('.result-panel-chip')).map(chip => chip.dataset.field);
         });
         // stop also fires when a drag is cancelled or dropped back, which must not force a redraw.
-        const current = this.state.areas();
+        const current = this.state.getAreas();
         const moved = ResultPanel.Areas.some(area => dropped[area.key].length != current[area.key].length ||
             dropped[area.key].some((field, index) => field != current[area.key][index]));
         if (!moved) return;
         this.state.defer(state => {
             ResultPanel.Areas.forEach(area => {
-                dropped[area.key].forEach((field, index) => state.assign(field, area.key, index));
+                dropped[area.key].forEach((field, index) => state.assignField(field, area.key, index));
             });
         });
     }
 
     // Ticking a field drops it into the area its catalogue entry belongs to, as the Wijmo panel did.
     toggleField(field, checked) {
-        if (!checked) return this.state.assign(field, null);
+        if (!checked) return this.state.assignField(field, null);
         const entry = this.state.fields.find(item => item.field == field);
-        this.state.assign(field, entry && entry.isMeasure ? 'values' : 'rows');
+        this.state.assignField(field, entry && entry.isMeasure ? 'values' : 'rows');
     }
 
     setDeferred(deferred) {
@@ -245,12 +245,15 @@ export class ResultPanel {
         const root = this.root();
         if (!root) return;
         this.closeMenu();
-        const areas = this.state.areas();
+        const areas = this.state.getAreas();
         const placed = new Set(Object.keys(areas).reduce((all, key) => all.concat(areas[key]), []));
-        root.querySelector('.result-panel-fields').innerHTML = this.state.fields.map(field =>
-            '<label class="result-panel-field">' +
+        root.querySelector('.result-panel-fields').innerHTML = this.state.fields.map(field => {
+            const filtered = this.state.filters[field.field] || this.state.conditionFilters[field.field];
+            const indicator = filtered ? '<i class="fa fa-filter result-panel-filter" title="Filter applied"></i>' : '';
+            return '<label class="result-panel-field">' +
             `<input type="checkbox" value="${escapeHtml(field.field)}"${placed.has(field.field) ? ' checked' : ''}> ` +
-            `<span>${escapeHtml(this.displayText(field.header))}</span></label>`).join('');
+            `${indicator}<span>${escapeHtml(this.displayText(field.header))}</span></label>`;
+        }).join('');
 
         ResultPanel.Areas.forEach(area => {
             const list = root.querySelector(`.result-panel-area[data-area="${area.key}"] .result-panel-list`);
@@ -258,13 +261,17 @@ export class ResultPanel {
         });
     }
 
-    // Value chips name their aggregation, which ResultLayoutState fixes for every measure.
+    // Value fields show the summary calculation currently stored in the layout.
     chip(field, area) {
         const entry = this.state.fields.find(item => item.field == field);
         const header = this.displayText(entry ? entry.header : field);
-        const aggregation = ResultLayoutState.Aggregation;
-        const suffix = area == 'values' ? ` (${aggregation.charAt(0).toUpperCase()}${aggregation.slice(1)})` : '';
-        const label = escapeHtml(header) + escapeHtml(suffix);
+        const settings = this.state.getFieldSettings(field);
+        const aggregation = settings ? settings.aggregation : 'sum';
+        const summary = aggregation.replace(/([a-z])([A-Z])/g, '$1 $2');
+        const suffix = area == 'values' ? ` (${summary.charAt(0).toUpperCase()}${summary.slice(1)})` : '';
+        const filtered = this.state.filters[field] || this.state.conditionFilters[field];
+        const indicator = filtered ? '<i class="fa fa-filter result-panel-filter" title="Filter applied"></i>' : '';
+        const label = indicator + escapeHtml(header) + escapeHtml(suffix);
         return `<li class="result-panel-chip" data-field="${escapeHtml(field)}" tabindex="0" title="Right-click for field commands">` +
             `<span class="result-panel-chip-label">${label}</span></li>`;
     }

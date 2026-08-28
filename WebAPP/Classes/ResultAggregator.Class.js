@@ -3,6 +3,7 @@ const RESULT_SHOW_TOTALS = Object.freeze({
     GrandTotals: 'grand',
     Subtotals: 'subtotals'
 });
+export const RESULT_FILTER_CONDITION_LIMIT = 2;
 
 // Group Results records into rows, columns, filtered values, and totals for charts and tables.
 export class ResultAggregator {
@@ -57,20 +58,17 @@ export class ResultAggregator {
                     rowKey: rowKey,
                     columnKey: columnKey,
                     values: {},
-                    counts: {}
+                    summaries: {}
                 };
                 valueFields.forEach(valueField => {
-                    cell.values[valueField.field] = 0;
-                    cell.counts[valueField.field] = 0;
+                    cell.summaries[valueField.field] = this.createSummary();
                 });
                 aggregates.set(cellID, cell);
             }
 
             valueFields.forEach(valueField => {
-                const value = this.numberValue(item[valueField.field]);
-                if (value === null) return;
-                cell.values[valueField.field] += value;
-                cell.counts[valueField.field]++;
+                const weight = valueField.weightField ? this.numberValue(item[valueField.weightField]) : null;
+                this.addSummary(cell.summaries[valueField.field], item[valueField.field], weight);
             });
         });
 
@@ -78,14 +76,13 @@ export class ResultAggregator {
         const cells = Array.from(aggregates.values()).map(cell => {
             const values = {};
             valueFields.forEach(valueField => {
-                values[valueField.field] = cell.counts[valueField.field]
-                    ? cell.values[valueField.field]
-                    : null;
+                values[valueField.field] = this.aggregateSummary(cell.summaries[valueField.field], valueField);
             });
             return {
                 rowKey: cell.rowKey.slice(),
                 columnKey: cell.columnKey.slice(),
-                values: values
+                values: values,
+                summaries: cell.summaries
             };
         });
 
@@ -101,15 +98,27 @@ export class ResultAggregator {
 
         // Calculate requested subtotals separately so charts cannot treat them as regular data.
         const totals = this.buildTotals(cells, rowDefinitions, columnDefinitions, valueFields, totalConfiguration);
+        this.applyShowAs(cells, rowKeys, columnKeys, valueFields);
+        const resultCells = cells.map(cell => ({
+            rowKey: cell.rowKey,
+            columnKey: cell.columnKey,
+            values: cell.values
+        }));
 
         return {
             rowFields: rowFields,
+            rowHeaders: rowDefinitions.map(field => field.header),
             columnFields: columnFields,
+            columnHeaders: columnDefinitions.map(field => field.header),
             valueFields: valueFields,
-            filters: filters.map(filter => ({ field: filter.field, values: filter.values.slice() })),
+            filters: filters.map(filter => ({
+                field: filter.field,
+                values: filter.values ? filter.values.slice() : null,
+                condition: filter.condition
+            })),
             rowKeys: rowKeys,
             columnKeys: columnKeys,
-            cells: cells,
+            cells: resultCells,
             totals: totals
         };
     }
@@ -149,6 +158,7 @@ export class ResultAggregator {
             }
             return {
                 field: name,
+                header: typeof field == 'object' && field !== null && field.header ? field.header : name,
                 descending: typeof field == 'object' && field !== null && field.descending === true
             };
         });
@@ -169,21 +179,59 @@ export class ResultAggregator {
             if (!filter || typeof filter.field != 'string' || !filter.field) {
                 throw new TypeError('ResultAggregator filters must have a string field name.');
             }
-            if (!Object.prototype.hasOwnProperty.call(filter, 'values')) {
-                throw new TypeError('ResultAggregator filters must define selected values.');
-            }
-            const values = Array.isArray(filter.values) ? filter.values : [filter.values];
+            const hasValues = filter.values !== null && filter.values !== undefined;
+            const values = hasValues ? (Array.isArray(filter.values) ? filter.values : [filter.values]) : null;
             return {
                 field: filter.field,
-                values: values.map(value => this.keyValue(value)),
-                valueIDs: new Set(values.map(value => this.keyID([this.keyValue(value)])))
+                values: values ? values.map(value => this.keyValue(value)) : null,
+                valueIDs: values ? new Set(values.map(value => this.keyID([this.keyValue(value)]))) : null,
+                condition: this.conditionDefinition(filter.condition)
             };
         });
     }
 
     // Require every configured field filter to match its selected values.
     static matchesFilters(item, filters) {
-        return filters.every(filter => filter.valueIDs.has(this.keyID([this.keyValue(item[filter.field])])));
+        return filters.every(filter => {
+            const value = this.keyValue(item[filter.field]);
+            return (!filter.valueIDs || filter.valueIDs.has(this.keyID([value]))) &&
+                (!filter.condition || this.matchesCondition(value, filter.condition));
+        });
+    }
+
+    static conditionDefinition(condition) {
+        if (!condition) return null;
+        const conditions = (condition.conditions || []).slice(0, RESULT_FILTER_CONDITION_LIMIT).filter(item => item && item.operator != null)
+            .map(item => ({ operator: item.operator, value: item.value }));
+        return conditions.length ? { and: condition.and !== false, conditions: conditions } : null;
+    }
+
+    static matchesCondition(value, definition) {
+        const matches = definition.conditions.map(condition => this.matchesOperator(value, condition.operator, condition.value));
+        return definition.and ? matches.every(Boolean) : matches.some(Boolean);
+    }
+
+    static matchesOperator(value, operator, expected) {
+        const names = { 0:'equals', 1:'notEquals', 2:'greaterThan', 3:'greaterThanOrEqual', 4:'lessThan', 5:'lessThanOrEqual', 6:'beginsWith', 7:'endsWith', 8:'contains', 9:'notContains', 10:'notBeginsWith', 11:'notEndsWith' };
+        const operation = names[operator] || operator;
+        const comparisonValue = typeof value == 'number' && expected !== '' && Number.isFinite(Number(expected))
+            ? Number(expected) : expected;
+        const comparison = this.compareValues(value, comparisonValue);
+        const text = String(value == null ? '' : value).toLowerCase();
+        const search = String(expected == null ? '' : expected).toLowerCase();
+        if (operation == 'equals') return comparison == 0;
+        if (operation == 'notEquals') return comparison != 0;
+        if (operation == 'greaterThan') return comparison > 0;
+        if (operation == 'greaterThanOrEqual') return comparison >= 0;
+        if (operation == 'lessThan') return comparison < 0;
+        if (operation == 'lessThanOrEqual') return comparison <= 0;
+        if (operation == 'beginsWith') return text.startsWith(search);
+        if (operation == 'notBeginsWith') return !text.startsWith(search);
+        if (operation == 'endsWith') return text.endsWith(search);
+        if (operation == 'notEndsWith') return !text.endsWith(search);
+        if (operation == 'contains') return text.includes(search);
+        if (operation == 'notContains') return !text.includes(search);
+        throw new Error(`Unsupported result filter operator: ${operator}`);
     }
 
     // Normalize row and column total settings without using Wijmo enum values.
@@ -239,19 +287,15 @@ export class ResultAggregator {
                             rowLevel: row.level,
                             columnLevel: column.level,
                             values: {},
-                            counts: {}
+                            summaries: {}
                         };
                         valueFields.forEach(valueField => {
-                            total.values[valueField.field] = 0;
-                            total.counts[valueField.field] = 0;
+                            total.summaries[valueField.field] = this.createSummary();
                         });
                         aggregates.set(totalID, total);
                     }
                     valueFields.forEach(valueField => {
-                        const value = cell.values[valueField.field];
-                        if (value === null) return;
-                        total.values[valueField.field] += value;
-                        total.counts[valueField.field]++;
+                        this.mergeSummary(total.summaries[valueField.field], cell.summaries[valueField.field]);
                     });
                 });
             });
@@ -266,16 +310,15 @@ export class ResultAggregator {
         const totalCells = Array.from(aggregates.values()).map(total => {
             const values = {};
             valueFields.forEach(valueField => {
-                values[valueField.field] = total.counts[valueField.field]
-                    ? total.values[valueField.field]
-                    : null;
+                values[valueField.field] = this.aggregateSummary(total.summaries[valueField.field], valueField);
             });
             return {
                 rowKey: total.rowKey,
                 columnKey: total.columnKey,
                 rowLevel: total.rowLevel,
                 columnLevel: total.columnLevel,
-                values: values
+                values: values,
+                summaries: total.summaries
             };
         }).sort((left, right) => {
             const leftRowOrder = left.rowLevel == rowDefinitions.length
@@ -300,7 +343,13 @@ export class ResultAggregator {
             columns: configuration.columns,
             rowKeys: sortedRowKeys,
             columnKeys: sortedColumnKeys,
-            cells: totalCells
+            cells: totalCells.map(cell => ({
+                rowKey: cell.rowKey,
+                columnKey: cell.columnKey,
+                rowLevel: cell.rowLevel,
+                columnLevel: cell.columnLevel,
+                values: cell.values
+            }))
         };
     }
 
@@ -310,7 +359,7 @@ export class ResultAggregator {
         return Array.from({ length: fieldCount }, (value, level) => level);
     }
 
-    // Restrict active measures to the supported MUIO Value sum workflow.
+    // Normalize the active measure and its MUIO-compatible calculation settings.
     static valueFields(fields) {
         if (!Array.isArray(fields)) {
             throw new TypeError('ResultAggregator value fields must be an array.');
@@ -323,14 +372,144 @@ export class ResultAggregator {
             if (!definition || typeof definition.field != 'string' || !definition.field) {
                 throw new TypeError('ResultAggregator value fields must have a string name.');
             }
-            if (definition.field != 'Value') {
-                throw new Error(`Unsupported result value field: ${definition.field}`);
-            }
             const aggregation = definition.aggregation || 'sum';
-            if (aggregation != 'sum') {
+            const supported = ['sum', 'count', 'average', 'max', 'min', 'range', 'std', 'variance', 'stdPopulation', 'variancePopulation', 'countAll', 'first', 'last'];
+            if (!supported.includes(aggregation)) {
                 throw new Error(`Unsupported result aggregation: ${aggregation}`);
             }
-            return { field: definition.field, aggregation: aggregation };
+            return {
+                field: definition.field,
+                header: definition.header || definition.field,
+                aggregation: aggregation,
+                showAs: definition.showAs || 'none',
+                weightField: definition.weightField || null,
+                format: definition.format || 'n2'
+            };
+        });
+    }
+
+    static createSummary() {
+        return { countAll: 0, count: 0, numericCount: 0, sum: 0, sumSquares: 0, min: null, max: null, first: null, last: null };
+    }
+
+    static addSummary(summary, rawValue, rawWeight) {
+        summary.countAll++;
+        if (rawValue === null || rawValue === undefined || rawValue === '') return;
+        const numeric = this.numberValue(rawValue);
+        summary.count++;
+        if (summary.first === null) summary.first = rawValue;
+        summary.last = rawValue;
+        if (summary.min === null || this.compareValues(rawValue, summary.min) < 0) summary.min = rawValue;
+        if (summary.max === null || this.compareValues(rawValue, summary.max) > 0) summary.max = rawValue;
+        if (numeric !== null) {
+            summary.numericCount++;
+            const weight = rawWeight === null ? 1 : rawWeight;
+            const weightedValue = numeric * weight;
+            summary.sum += weightedValue;
+            summary.sumSquares += weightedValue * weightedValue;
+        }
+    }
+
+    static mergeSummary(target, source) {
+        target.countAll += source.countAll;
+        target.count += source.count;
+        target.numericCount += source.numericCount;
+        target.sum += source.sum;
+        target.sumSquares += source.sumSquares;
+        if (target.first === null) target.first = source.first;
+        if (source.last !== null) target.last = source.last;
+        if (source.min !== null && (target.min === null || this.compareValues(source.min, target.min) < 0)) target.min = source.min;
+        if (source.max !== null && (target.max === null || this.compareValues(source.max, target.max) > 0)) target.max = source.max;
+    }
+
+    static aggregateSummary(summary, field) {
+        const count = summary.count;
+        const numericCount = summary.numericCount;
+        if (field.aggregation == 'countAll') return summary.countAll;
+        if (field.aggregation == 'count') return count;
+        if (!count) return null;
+        if (field.aggregation == 'first') return summary.first;
+        if (field.aggregation == 'last') return summary.last;
+        if (field.aggregation == 'min') return summary.min;
+        if (field.aggregation == 'max') return summary.max;
+        if (field.aggregation == 'range') return Number(summary.max) - Number(summary.min);
+        if (field.aggregation == 'sum') return summary.sum;
+        if (field.aggregation == 'average') return numericCount ? summary.sum / numericCount : 0;
+        const populationVariance = numericCount > 1
+            ? Math.max(0, summary.sumSquares / numericCount - Math.pow(summary.sum / numericCount, 2)) : 0;
+        if (field.aggregation == 'variancePopulation') return populationVariance;
+        if (field.aggregation == 'stdPopulation') return Math.sqrt(populationVariance);
+        const sampleVariance = numericCount > 1 ? populationVariance * numericCount / (numericCount - 1) : 0;
+        if (field.aggregation == 'variance') return sampleVariance;
+        if (field.aggregation == 'std') return Math.sqrt(sampleVariance);
+        return null;
+    }
+
+    // Apply Excel-style Show As transformations after the base summaries are complete.
+    static applyShowAs(cells, rowKeys, columnKeys, valueFields) {
+        const lookup = new Map(cells.map(cell => [this.cellID(this.keyID(cell.rowKey), this.keyID(cell.columnKey)), cell]));
+        const groupKeys = keys => keys.reduce((groups, key) => {
+            const prefix = this.keyID(key.slice(0, -1));
+            if (!groups.has(prefix)) groups.set(prefix, []);
+            groups.get(prefix).push(key);
+            return groups;
+        }, new Map());
+        const rowGroups = groupKeys(rowKeys);
+        valueFields.forEach(field => {
+            if (field.showAs == 'none') return;
+            const original = new Map(cells.map(cell => [cell, cell.values[field.field]]));
+            const rowTotal = rowKey => columnKeys.reduce((sum, columnKey) => {
+                const cell = lookup.get(this.cellID(this.keyID(rowKey), this.keyID(columnKey)));
+                const value = cell ? original.get(cell) : null;
+                return sum + (Number.isFinite(value) ? value : 0);
+            }, 0);
+            const columnTotal = columnKey => rowKeys.reduce((sum, rowKey) => {
+                const cell = lookup.get(this.cellID(this.keyID(rowKey), this.keyID(columnKey)));
+                const value = cell ? original.get(cell) : null;
+                return sum + (Number.isFinite(value) ? value : 0);
+            }, 0);
+            const grand = cells.reduce((sum, cell) => sum + (Number.isFinite(original.get(cell)) ? original.get(cell) : 0), 0);
+            cells.forEach(cell => {
+                const row = rowKeys.findIndex(key => this.keyID(key) == this.keyID(cell.rowKey));
+                const column = columnKeys.findIndex(key => this.keyID(key) == this.keyID(cell.columnKey));
+                const value = original.get(cell);
+                const rowPrefix = cell.rowKey.slice(0, -1);
+                const columnPrefix = cell.columnKey.slice(0, -1);
+                const sameRowGroup = key => this.keyID(key.slice(0, -1)) == this.keyID(rowPrefix);
+                const sameColumnGroup = key => this.keyID(key.slice(0, -1)) == this.keyID(columnPrefix);
+                const previousRow = row > 0 && sameRowGroup(rowKeys[row - 1])
+                    ? lookup.get(this.cellID(this.keyID(rowKeys[row - 1]), this.keyID(cell.columnKey))) : null;
+                const previousColumn = column > 0 && sameColumnGroup(columnKeys[column - 1])
+                    ? lookup.get(this.cellID(this.keyID(cell.rowKey), this.keyID(columnKeys[column - 1]))) : null;
+                const previousRowValue = previousRow ? original.get(previousRow) : null;
+                const previousColumnValue = previousColumn ? original.get(previousColumn) : null;
+                const ratio = denominator => Number.isFinite(value) && denominator ? value / denominator : null;
+                if (field.showAs == 'differenceRow') cell.values[field.field] = Number.isFinite(previousRowValue) ? value - previousRowValue : null;
+                else if (field.showAs == 'differenceRowPercent') cell.values[field.field] = Number.isFinite(previousRowValue) && previousRowValue ? (value - previousRowValue) / previousRowValue : null;
+                else if (field.showAs == 'differenceColumn') cell.values[field.field] = Number.isFinite(previousColumnValue) ? value - previousColumnValue : null;
+                else if (field.showAs == 'differenceColumnPercent') cell.values[field.field] = Number.isFinite(previousColumnValue) && previousColumnValue ? (value - previousColumnValue) / previousColumnValue : null;
+                else if (field.showAs == 'percentGrand') cell.values[field.field] = ratio(grand);
+                else if (field.showAs == 'percentRow') cell.values[field.field] = ratio(rowTotal(cell.rowKey));
+                else if (field.showAs == 'percentColumn') cell.values[field.field] = ratio(columnTotal(cell.columnKey));
+                else if (field.showAs == 'percentPreviousRow') cell.values[field.field] = previousRow ? ratio(previousRowValue) : 1;
+                else if (field.showAs == 'percentPreviousColumn') cell.values[field.field] = previousColumn ? ratio(previousColumnValue) : 1;
+                else if (field.showAs == 'runningTotal' || field.showAs == 'runningTotalPercent') {
+                    const groupRows = rowGroups.get(this.keyID(rowPrefix)) || [];
+                    const groupIndex = groupRows.findIndex(key => this.keyID(key) == this.keyID(cell.rowKey));
+                    const running = groupRows.slice(0, groupIndex + 1).reduce((sum, rowKey) => {
+                        const item = lookup.get(this.cellID(this.keyID(rowKey), this.keyID(cell.columnKey)));
+                        const itemValue = item ? original.get(item) : null;
+                        return sum + (Number.isFinite(itemValue) ? itemValue : 0);
+                    }, 0);
+                    const groupTotal = groupRows.reduce((sum, rowKey) => {
+                        const item = lookup.get(this.cellID(this.keyID(rowKey), this.keyID(cell.columnKey)));
+                        const itemValue = item ? original.get(item) : null;
+                        return sum + (Number.isFinite(itemValue) ? itemValue : 0);
+                    }, 0);
+                    cell.values[field.field] = field.showAs == 'runningTotalPercent'
+                        ? (groupTotal ? running / groupTotal : null) : running;
+                }
+            });
         });
     }
 
