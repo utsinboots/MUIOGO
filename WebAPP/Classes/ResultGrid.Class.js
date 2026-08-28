@@ -14,6 +14,7 @@ export class ResultGrid {
         this.result = null;
         this.valueColumns = [];
         this.columnSignature = '';
+        this.numberFormat = 'n2';
         this.autoScrollCleanup = null;
         this.clipboardCleanup = null;
     }
@@ -23,6 +24,7 @@ export class ResultGrid {
         const view = this.view(result);
         this.result = result;
         this.valueColumns = view.columns;
+        this.numberFormat = numberFormat;
         const contextMenu = (event, cell) => this.cellMenu(cell);
         const columns = result.rowFields.map((field, index) => ({
             title: escapeHtml(this.displayText(field)),
@@ -65,6 +67,7 @@ export class ResultGrid {
         });
 
         if (this.table && this.columnSignature != columnSignature) {
+            this.clearRangeSelection();
             this.clearSelectionHighlight();
             if (this.autoScrollCleanup) this.autoScrollCleanup();
             if (this.clipboardCleanup) this.clipboardCleanup();
@@ -73,6 +76,7 @@ export class ResultGrid {
         }
         this.columnSignature = columnSignature;
         if (this.table) {
+            this.clearRangeSelection();
             this.clearSelectionHighlight();
             this.table.replaceData(view.rows);
             return;
@@ -90,6 +94,7 @@ export class ResultGrid {
             selectableRangeRows: true,
             // Open with nothing selected instead of Tabulator's default first-cell range.
             selectableRangeInitializeDefault: false,
+            selectableRangeAutoFocus: false,
             clipboard: true,
             clipboardCopyRowRange: 'range',
             clipboardCopyStyled: false,
@@ -181,7 +186,7 @@ export class ResultGrid {
             }
             columns.forEach(column => {
                 const value = data[column.getField()];
-                labels.push(value === null || value === undefined ? '' : value);
+                labels.push(this.number(value, this.numberFormat));
             });
             lines.push(labels.join('\t'));
         });
@@ -497,6 +502,17 @@ export class ResultGrid {
         });
     }
 
+    // Remove grid-owned ranges before Tabulator replaces the elements they reference.
+    clearRangeSelection() {
+        if (this.table) (this.table.getRanges() || []).forEach(range => range.remove());
+        const root = document.querySelector(this.selector);
+        const selection = window.getSelection ? window.getSelection() : null;
+        if (root && selection && selection.rangeCount &&
+            (root.contains(selection.anchorNode) || root.contains(selection.focusNode))) {
+            selection.removeAllRanges();
+        }
+    }
+
     // Match the configured Wijmo-style decimal precision for displayed values.
     number(value, format) {
         if (value === null || value === undefined) return '';
@@ -519,6 +535,7 @@ export class ResultGrid {
     }
 
     destroy() {
+        this.clearRangeSelection();
         if (this.autoScrollCleanup) this.autoScrollCleanup();
         if (this.clipboardCleanup) this.clipboardCleanup();
         if (this.table) this.table.destroy();
