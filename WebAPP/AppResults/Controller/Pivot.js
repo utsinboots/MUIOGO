@@ -15,6 +15,16 @@ import { ResultFieldSettings } from "../../Classes/ResultFieldSettings.Class.js"
 
 const ECHARTS_URL = 'References/echarts/echarts-6.1.0.min.js';
 
+// Chart plots at most 100 series/categories, one per Columns/Rows value: Wijmo's PivotChart.MAX_SERIES and MAX_POINTS
+const CHART_MAX_SERIES = 100;
+const CHART_MAX_POINTS = 100;
+
+// Legend chip metrics, used both to measure the legend and to draw it.
+const LEGEND_FONT_SIZE = 9;
+const LEGEND_ROW_HEIGHT = 17;
+const LEGEND_ITEM_SIZE = 8;
+const LEGEND_ITEM_GAP = 8;
+
 export default class Pivot {
     static loadECharts() {
         if (window.echarts) return Promise.resolve(window.echarts);
@@ -38,7 +48,7 @@ export default class Pivot {
         });
     }
 
-    // Convert supported unit markup to Unicode text without parsing model HTML.
+    // Strip markup from value, turning <sup> digits into Unicode superscripts.
     static plainText(value) {
         const superscript = { '0':'⁰', '1':'¹', '2':'²', '3':'³', '4':'⁴', '5':'⁵', '6':'⁶', '7':'⁷', '8':'⁸', '9':'⁹', '+':'⁺', '-':'⁻' };
         const entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
@@ -48,14 +58,13 @@ export default class Pivot {
             .replace(/&(amp|lt|gt|quot|apos|nbsp);/gi, (_, name) => entities[name.toLowerCase()]);
     }
 
-    // Default column field per result group, matching the layout MUIO opened each variable with.
+    // Field each result group puts in Columns by default; null means no column field. Others default to Tech.
     static GROUP_COLUMNS = Object.freeze({
         R: 'Optimal', RY: null, RYE: 'Emi', RYCn: 'Con', RYS: 'Stg',
         RYCTs: 'Comm', RYC: 'Comm', RYTC: 'Comm', RYTCMTs: 'Comm'
     });
 
-    // Catalogue the fields present in the pivot records. Wijmo derived headers from the binding by
-    // splitting camel case, and saved views reference those headers, so the same split is kept.
+    // List the fields in the pivot records, splitting camel case into the headers saved views refer to.
     static fieldCatalogue(items) {
         const sample = (items || [])[0] || {};
         return Object.keys(sample).map(name => ({
@@ -66,14 +75,14 @@ export default class Pivot {
         }));
     }
 
-    // Place the fields a group opens with, replacing the per-group blocks the engine needed.
+    // Reset the layout to the fields the given result group opens with.
     static applyDefaultLayout(state, group) {
         const column = Object.prototype.hasOwnProperty.call(Pivot.GROUP_COLUMNS, group)
             ? Pivot.GROUP_COLUMNS[group] : 'Tech';
         return state.defer(current => {
             current.resetFieldSettings();
             ['rows', 'columns', 'filters', 'values'].forEach(area => current.getAreas()[area].splice(0));
-            // Clear filters with the layout so one variable cannot silently restrict the next.
+            // Clear filters too, or one variable's filter would silently restrict the next.
             Object.keys(current.filters).forEach(name => current.setFilter(name, null));
             Object.keys(current.descending).forEach(name => current.setDescending(name, false));
             current.assignField('Case', 'rows');
@@ -93,26 +102,28 @@ export default class Pivot {
             option.textContent = Pivot.plainText(item[labelKey]);
             return option.outerHTML;
         }).join('');
-        // outerHTML serializes the selected attribute, not the property, so set the live value here.
+        // Set the value directly: outerHTML above serializes the selected attribute, not the property.
         if (selected != null) control.value = selected;
     }
 
-    // Organize aggregated results into categories and series for chart rendering.
+    // Turn the aggregated result into the categories, series and labels the chart options are built from.
     static getChartModel(app) {
         const result = app.aggregateResult;
         if (!result) return { categories: [], categoryLabels: [], series: [], rowFields: [], categoryTuples: [] };
 
-        // Row keys are the categories and column keys the series, both already ordered by the aggregator.
-        const categoryTuples = result.rowKeys.map(key => key.map(value => Pivot.plainText(value)));
-        const rowIndexes = new Map(result.rowKeys.map((key, index) => [ResultAggregator.keyID(key), index]));
-        const columnIndexes = new Map(result.columnKeys.map((key, index) => [ResultAggregator.keyID(key), index]));
+        // Rows become categories and columns become series, both already in the aggregator's order.
+        const rowKeys = result.rowKeys.slice(0, CHART_MAX_POINTS);
+        const columnKeys = result.columnKeys.slice(0, CHART_MAX_SERIES);
+        const categoryTuples = rowKeys.map(key => key.map(value => Pivot.plainText(value)));
+        const rowIndexes = new Map(rowKeys.map((key, index) => [ResultAggregator.keyID(key), index]));
+        const columnIndexes = new Map(columnKeys.map((key, index) => [ResultAggregator.keyID(key), index]));
         const valueField = result.valueFields.length ? result.valueFields[0].field : 'Value';
-        const series = result.columnKeys.map(key => ({
+        const series = columnKeys.map(key => ({
             name: Pivot.plainText(key.join(' - ')) || valueField,
-            values: Array(result.rowKeys.length).fill(null)
+            values: Array(rowKeys.length).fill(null)
         }));
 
-        // Only regular cells appear here; the aggregator keeps subtotals in a separate collection.
+        // Fill each series from the cells; totals are excluded because the aggregator stores them separately.
         result.cells.forEach(cell => {
             const row = rowIndexes.get(ResultAggregator.keyID(cell.rowKey));
             const column = columnIndexes.get(ResultAggregator.keyID(cell.columnKey));
@@ -122,19 +133,56 @@ export default class Pivot {
         });
 
         const rowFieldNames = result.rowFields.slice();
+        // Case is dropped from the visible label because the grouped axis already shows it as a bracket.
         const displayedFields = rowFieldNames.map((_, index) => index)
             .filter(index => rowFieldNames[index] != 'Case');
         if (!displayedFields.length && rowFieldNames.length) displayedFields.push(rowFieldNames.length - 1);
+        // categories are the unique keys, categoryLabels the shorter text shown under each bar.
         const categories = categoryTuples.map(values => values.join(' - ') || 'Value');
         const categoryLabels = categoryTuples.map(values =>
             displayedFields.map(index => values[index]).join(' - ') || 'Value');
 
-        // rowFields and categoryTuples drive the grouped axis: the innermost field labels each bar.
         return { categories, categoryLabels, series, rowFields: rowFieldNames, categoryTuples };
     }
 
-    // Category axis: the innermost field labels each bar, outer fields become nested bracket axes.
-    static getCategoryAxis(chartModel, horizontal) {
+    // Rendered width of one label, measured rather than estimated so the levels can be packed tightly.
+    // Results repeat the same few labels down a column, so measurements are cached by text and size.
+    static textWidth(text, fontSize) {
+        const cache = Pivot.textWidths || (Pivot.textWidths = new Map());
+        const key = `${fontSize}:${text}`;
+        let width = cache.get(key);
+        if (width === undefined) {
+            const context = Pivot.measureContext
+                || (Pivot.measureContext = document.createElement('canvas').getContext('2d'));
+            context.font = `${fontSize}px sans-serif`;
+            width = context.measureText(text).width;
+            cache.set(key, width);
+        }
+        return width;
+    }
+
+    // Distance from the plot to each grouped level of a rotated chart, so long labels cannot collide.
+    static getLevelOffsets(chartModel) {
+        const tuples = chartModel.categoryTuples || [];
+        const leafIndex = (chartModel.rowFields || []).length - 1;
+        // Widest label at one level, in pixels, plus padding. The leaf axis draws larger than the brackets.
+        const levelWidth = index => tuples.reduce((longest, tuple) => {
+            const label = Pivot.plainText(tuple[index] == null ? '' : tuple[index]);
+            return Math.max(longest, Pivot.textWidth(label, index == leafIndex ? 12 : 10));
+        }, 0) + 14;
+        const offsets = [];
+        // Each level clears every level inside it, so offsets accumulate outwards from the leaf.
+        let used = leafIndex >= 0 ? levelWidth(leafIndex) : 0;
+        for (let field = leafIndex - 1; field >= 0; field--) {
+            offsets[field] = used;
+            used += levelWidth(field);
+        }
+        // total is the space all levels need, which the grid uses as its left margin.
+        return { offsets, total: used };
+    }
+
+    // Build the category axis: one axis labelling each bar, plus a bracket axis per outer row field.
+    static getCategoryAxis(chartModel, horizontal, levelOffsets) {
         const tuples = chartModel.categoryTuples || [];
         const fieldCount = (chartModel.rowFields || []).length;
         const leafIndex = fieldCount - 1;
@@ -143,9 +191,9 @@ export default class Pivot {
         const categoryWidth = chartModel.categories.length ? chartWidth / chartModel.categories.length : chartWidth;
         const longestLeaf = tuples.reduce((width, tuple) => {
             const label = leafIndex >= 0 ? Pivot.plainText(tuple[leafIndex]) : '';
-            return Math.max(width, label.length * 6.5);
+            return Math.max(width, Pivot.textWidth(label, 12));
         }, 0);
-        // Rotate crowded leaf labels like Wijmo while keeping outer grouped labels horizontal.
+        // Tilt the bar labels only when they are wider than the space each bar gets.
         const leafRotated = !horizontal && longestLeaf > Math.max(categoryWidth, 24);
         const leafAngle = leafRotated ? 45 : 0;
         const leafHeight = leafRotated
@@ -166,10 +214,11 @@ export default class Pivot {
         };
         if (fieldCount < 2 || tuples.length != chartModel.categories.length) return leafAxis;
 
+        // Height of one bracket row, and how far each level sits from the plot when the chart is rotated.
         const step = 22;
         const axes = [leafAxis];
         for (let field = 0; field < leafIndex; field++) {
-            // A bracket starts wherever this field or any outer field changes value.
+            // A bracket starts wherever this field or any field outside it changes value.
             const starts = [];
             tuples.forEach((tuple, index) => {
                 if (index == 0) { starts.push(index); return; }
@@ -178,6 +227,7 @@ export default class Pivot {
                     if (previous[outer] != tuple[outer]) { starts.push(index); return; }
                 }
             });
+            // Label each bracket once, at the category in the middle of its span.
             const midLabel = new Map();
             starts.forEach((start, groupIndex) => {
                 const end = (groupIndex + 1 < starts.length ? starts[groupIndex + 1] : tuples.length) - 1;
@@ -189,8 +239,8 @@ export default class Pivot {
                 type: 'category',
                 data: chartModel.categories,
                 position: horizontal ? 'left' : 'bottom',
-                offset: horizontal ? rank * 70 : leafHeight + (rank - 1) * step,
-                // Dividers at each boundary, no continuous axis line: a line would join every group.
+                offset: horizontal ? levelOffsets.offsets[field] : leafHeight + (rank - 1) * step,
+                // Ticks divide the groups; the axis line is off because it would run through them all.
                 axisLine: { show: false },
                 axisTick: {
                     show: true,
@@ -211,17 +261,21 @@ export default class Pivot {
         return axes;
     }
 
-    // Reserve room under the plot for the full legend; it grows with the number of series.
-    static getLegendHeight(series) {
+    // Height to reserve for the legend: every row, capped at half the chart minus reserved.
+    static getLegendHeight(series, reserved = 0) {
         const host = document.getElementById('pivotChart');
         const width = host && host.clientWidth ? host.clientWidth : 1200;
+        const height = host && host.clientHeight ? host.clientHeight : 400;
+        // Estimate rows from how many chips of the longest name fit across the chart.
         const longest = series.reduce((count, item) => Math.max(count, String(item.name || '').length), 8);
-        const entryWidth = 26 + longest * 6.5;
+        const entryWidth = LEGEND_ITEM_SIZE + 6 + longest * LEGEND_FONT_SIZE * 0.6 + LEGEND_ITEM_GAP;
         const perRow = Math.max(1, Math.floor(width / entryWidth));
         const rows = Math.max(1, Math.ceil(series.length / perRow));
-        return Math.min(rows, 8) * 16 + 4;
+        // Two rows spare: ECharts leaves padding under a bottom-anchored legend that is not part of the rows.
+        return Math.min((rows + 2) * LEGEND_ROW_HEIGHT, Math.max(24, Math.floor(height / 2) - reserved));
     }
 
+    // Rescale each series so every category totals 100, for the percentage-stacked chart.
     static getPercentSeries(series) {
         if (!series.length) return [];
         const totals = series[0].values.map((_, index) => series.reduce((sum, current) => {
@@ -305,15 +359,15 @@ export default class Pivot {
                 },
                 legend: {
                 show: app.pivotChart.showLegend,
-                // List every entry under the chart with small square chips instead of paging.
+                // 'plain' lists every entry at once; 'scroll' would page them and hide most from the export.
                 type: 'plain',
                 bottom: 0,
                 selectedMode: false,
                 icon: 'rect',
-                itemWidth: 10,
-                itemHeight: 10,
-                itemGap: 12,
-                textStyle: { fontSize: 11 }
+                itemWidth: LEGEND_ITEM_SIZE,
+                itemHeight: LEGEND_ITEM_SIZE,
+                itemGap: LEGEND_ITEM_GAP,
+                textStyle: { fontSize: LEGEND_FONT_SIZE }
             },
                 graphic: pieData.length ? [] : [{
                     type: 'text',
@@ -339,10 +393,16 @@ export default class Pivot {
         const horizontal = chartType == 'bar';
         const itemTooltip = chartType == 'column' || chartType == 'bar';
         const type = itemTooltip ? 'bar' : chartType == 'area' ? 'line' : chartType;
-        const categoryAxis = Pivot.getCategoryAxis(chartModel, horizontal);
+        // Measured once here: both the bracket axes and the grid's left margin are derived from it.
+        const levelOffsets = horizontal ? Pivot.getLevelOffsets(chartModel) : null;
+        const categoryAxis = Pivot.getCategoryAxis(chartModel, horizontal, levelOffsets);
         const grouped = Array.isArray(categoryAxis);
         const levels = grouped ? categoryAxis.length - 1 : 0;
-        const legendHeight = app.pivotChart.showLegend ? Pivot.getLegendHeight(chartSeries) : 12;
+        // Space the bracket rows need below the plot; the legend gets what is left of its half.
+        const axisHeight = !horizontal && grouped ? levels * 22 + 6 : 6;
+        const legendHeight = app.pivotChart.showLegend ? Pivot.getLegendHeight(chartSeries, axisHeight) : 12;
+        // The bracket rows are offset axes that containLabel does not measure, so reserve them here.
+        const bottomHeight = legendHeight + axisHeight;
         const axisValue = {
             type: 'value',
             axisLabel: { formatter: value => Pivot.formatChartValue(value, valueFormat, percent, currency) }
@@ -364,23 +424,24 @@ export default class Pivot {
             },
             legend: {
                 show: app.pivotChart.showLegend,
-                // List every entry under the chart with small square chips instead of paging.
+                // 'plain' lists every entry at once; 'scroll' would page them and hide most from the export.
                 type: 'plain',
                 bottom: 0,
                 selectedMode: false,
                 icon: 'rect',
-                itemWidth: 10,
-                itemHeight: 10,
-                itemGap: 12,
-                textStyle: { fontSize: 11 }
+                itemWidth: LEGEND_ITEM_SIZE,
+                itemHeight: LEGEND_ITEM_SIZE,
+                itemGap: LEGEND_ITEM_GAP,
+                textStyle: { fontSize: LEGEND_FONT_SIZE }
             },
             grid: {
                 top: 35,
                 right: 30,
-                // containLabel covers the axis labels; only the offset group levels need extra space.
-                bottom: legendHeight + (!horizontal && grouped ? levels * 22 + 6 : 6),
-                left: horizontal && grouped ? 75 + levels * 60 : 75,
-                containLabel: true
+                // containLabel already fits the axis labels, so only legend and brackets are added here.
+                bottom: bottomHeight,
+                // Stacked bracket levels are measured here, so containLabel would reserve that width twice.
+                left: horizontal && grouped ? Math.max(75, levelOffsets.total) : 75,
+                containLabel: !(horizontal && grouped)
             },
             xAxis: horizontal ? axisValue : categoryAxis,
             yAxis: horizontal ? categoryAxis : axisValue,
@@ -431,7 +492,7 @@ export default class Pivot {
         app.resultGrid.render(app.aggregateResult, app.state.numberFormat);
     }
 
-    // Distinct values of one field, for the filter list in the field settings dialog.
+    // Unique values of one field, used to populate the filter list in the field settings dialog.
     static fieldValues(items, field) {
         const values = new Map();
         (items || []).forEach(item => {
@@ -441,30 +502,32 @@ export default class Pivot {
         return Array.from(values.values());
     }
 
-    // Render each Results output only after the active layout has finished updating.
+    // Redraw grid and chart together, skipping the call while a variable change is still in flight.
     static renderResults(app, model) {
         if (Pivot.activeApp != app || app.updatingParam) return;
         Pivot.renderResultGrid(app, model);
         Pivot.renderChart(app, model);
     }
 
+    // Tear down the grid and its listeners when leaving the page or rebuilding it.
     static disposeResultGrid(app = Pivot.activeApp) {
         if (app && app.resultGrid) app.resultGrid.destroy();
     }
 
+    // Tear down the field panel and the settings dialog it opens.
     static disposeResultPanel(app = Pivot.activeApp) {
         if (app && app.panel) app.panel.destroy();
         ResultFieldSettings.destroy();
     }
 
-    // Surface anything a saved view asked for that the open-source layout does not reproduce.
+    // Warn the user about settings a saved view asked for that this layout cannot reproduce.
     static reportLayoutWarnings(state) {
         if (state.warnings.length) {
             Message.smallBoxWarning('Saved view', state.warnings.map(warning => escapeHtml(warning)).join('<br>'), 6000);
         }
     }
 
-    // Keep the totals controls aligned with the active default or saved-view layout.
+    // Tick or clear the totals checkboxes to match the layout currently in effect.
     static syncTotalsControls(state) {
         const rowTotals = document.querySelector('#showRowTotals');
         const columnTotals = document.querySelector('#showColumnTotals');
@@ -472,6 +535,7 @@ export default class Pivot {
         if (columnTotals) columnTotals.checked = state.totals.columns != ResultAggregator.ShowTotals.None;
     }
 
+    // Resize the chart with the window and dispose it when the page unloads.
     static bindChartLifecycle(app) {
         $(window).off('.muiopivot');
         $(window).on('resize.muiopivot', () => {
@@ -487,10 +551,10 @@ export default class Pivot {
         });
     }
 
+    // Download the chart as SVG, named after the case and variable.
     static exportChart(model) {
         if (!Pivot.chart || Pivot.chart.isDisposed()) return;
         const safeName = `${model.casename}-${model.param}`.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
-        // The on-screen legend already lists every entry, so the chart captures as it appears.
         const link = document.createElement('a');
         link.download = `muiogo-${safeName}.svg`;
         link.href = Pivot.chart.getDataURL({ type: 'svg', pixelRatio: 2, backgroundColor: '#ffffff' });
@@ -627,7 +691,7 @@ export default class Pivot {
                 currency: model.genData['osy-currency'] || 'USD',
                 fieldValues: field => Pivot.fieldValues(model.pivotData, field)
             }),
-            // Year is the only dimension where reversing the order is meaningful for results.
+            // Only Year offers a sort toggle; reversing any other dimension is not meaningful here.
             sortableFields: ['Year'],
             toggleFieldSort: fieldName => app.state.setDescending(fieldName, !app.state.descending[fieldName])
         });
@@ -823,7 +887,7 @@ export default class Pivot {
             if (DATA !== null && model.param in DATA && Object.getOwnPropertyNames(DATA[model.param]).length != 0){
                 let pivotData = DataModelResult.getPivot(DATA, model.genData, model.VARIABLES, model.group, model.param);
                 model.pivotData = pivotData;
-                // Swap the catalogue for the new variable, then open it on that group's default layout.
+                // Load the new variable's fields, then open it on its group's default layout.
                 app.state.setFields(Pivot.fieldCatalogue(model.pivotData));
                 Pivot.applyDefaultLayout(app.state, model.group);
                 app.state.setNumberFormat(model.stgDecimalPoints);
@@ -842,7 +906,7 @@ export default class Pivot {
                     model.TriggerUpdate = true;
                     Html.title(model.casename, model.VARNAMES[model.group][model.param], model.group+' - Default view');
                 }
-                // A filter carried in from a saved view may name values this variable does not have.
+                // Drop filter values the new variable does not have, so nothing filters on a stale value.
                 app.state.pruneFilterValues(model.pivotData);
                 Pivot.reportLayoutWarnings(app.state);
 
