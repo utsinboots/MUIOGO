@@ -19,6 +19,12 @@ const ECHARTS_URL = 'References/echarts/echarts-6.1.0.min.js';
 const CHART_MAX_SERIES = 100;
 const CHART_MAX_POINTS = 100;
 
+// Longest unit label the value axis will carry; past this the axis says "Multiple units"
+// and the full list moves below the chart, as MUIO does.
+const UNIT_LABEL_MAX_CHARS = 40;
+// Height of the unit footer strip drawn under the legend.
+const UNIT_FOOTER_HEIGHT = 18;
+
 // Legend chip metrics, used both to measure the legend and to draw it.
 const LEGEND_FONT_SIZE = 9;
 const LEGEND_ROW_HEIGHT = 17;
@@ -104,6 +110,65 @@ export default class Pivot {
         }).join('');
         // Set the value directly: outerHTML above serializes the selected attribute, not the property.
         if (selected != null) control.value = selected;
+    }
+
+    // Distinct units among the records the active filters keep, so the label follows what is plotted.
+    static getFilteredUnits(items, configuration) {
+        const filters = ResultAggregator.filterDefinitions((configuration || {}).filters || []);
+        const units = new Set();
+        (items || []).forEach(item => {
+            const unit = item.Unit;
+            if (!unit || units.has(unit)) return;
+            if (ResultAggregator.matchesFilters(item, filters)) units.add(unit);
+        });
+        return units;
+    }
+
+    // Largest value the axis must label. Stacked charts show the column total, so a single
+    // series maximum would badly understate it. Padded for the tick ECharts rounds up to.
+    static getValueExtent(series, categories, stacking, percent) {
+        if (percent) return 100;
+        let extent = 0;
+        if (stacking) {
+            for (let index = 0; index < categories; index++) {
+                let positive = 0, negative = 0;
+                series.forEach(itemSeries => {
+                    const value = itemSeries.values[index];
+                    if (value == null) return;
+                    if (value >= 0) positive += value; else negative += value;
+                });
+                extent = Math.max(extent, positive, Math.abs(negative));
+            }
+        } else {
+            series.forEach(itemSeries => itemSeries.values.forEach(value => {
+                if (value != null) extent = Math.max(extent, Math.abs(value));
+            }));
+        }
+        return extent * 1.1;
+    }
+
+    // Rows the legend needs at the current width; the footer sits directly on top of them.
+    static legendRows(series) {
+        const host = document.getElementById('pivotChart');
+        const width = host && host.clientWidth ? host.clientWidth : 1200;
+        const longest = series.reduce((count, item) => Math.max(count, String(item.name || '').length), 8);
+        const entryWidth = LEGEND_ITEM_SIZE + 6 + longest * LEGEND_FONT_SIZE * 0.6 + LEGEND_ITEM_GAP;
+        const perRow = Math.max(1, Math.floor(width / entryWidth));
+        return Math.max(1, Math.ceil(series.length / perRow));
+    }
+
+    // Join the units into one readable label, with superscripts as Unicode.
+    static getUnitLabel(units) {
+        return Array.from(units || []).filter(Boolean)
+            .map(unit => Pivot.plainText(unit)).join(', ');
+    }
+
+    // Unit list drawn inside the chart so exports carry it, sitting above the legend on the left.
+    static unitFooter(text, above = 0) {
+        return text ? [{
+            type: 'text', left: 8, bottom: above + 4, silent: true,
+            style: { text: text, fontSize: 11, fill: '#4b5563' }
+        }] : [];
     }
 
     // Turn the aggregated result into the categories, series and labels the chart options are built from.
@@ -266,13 +331,9 @@ export default class Pivot {
         const host = document.getElementById('pivotChart');
         const width = host && host.clientWidth ? host.clientWidth : 1200;
         const height = host && host.clientHeight ? host.clientHeight : 400;
-        // Estimate rows from how many chips of the longest name fit across the chart.
-        const longest = series.reduce((count, item) => Math.max(count, String(item.name || '').length), 8);
-        const entryWidth = LEGEND_ITEM_SIZE + 6 + longest * LEGEND_FONT_SIZE * 0.6 + LEGEND_ITEM_GAP;
-        const perRow = Math.max(1, Math.floor(width / entryWidth));
-        const rows = Math.max(1, Math.ceil(series.length / perRow));
         // Two rows spare: ECharts leaves padding under a bottom-anchored legend that is not part of the rows.
-        return Math.min((rows + 2) * LEGEND_ROW_HEIGHT, Math.max(24, Math.floor(height / 2) - reserved));
+        return Math.min((Pivot.legendRows(series) + 2) * LEGEND_ROW_HEIGHT,
+            Math.max(24, Math.floor(height / 2) - reserved));
     }
 
     // Rescale each series so every category totals 100, for the percentage-stacked chart.
@@ -338,13 +399,19 @@ export default class Pivot {
         const chartModel = Pivot.getChartModel(app);
         const chartType = app.pivotChart.chartType;
         const percent = app.pivotChart.stacking == 'percent';
+        const stacking = app.pivotChart.stacking != 'none';
         const valueField = app.aggregateResult && app.aggregateResult.valueFields[0];
         const valueFormat = valueField ? valueField.format : model.stgDecimalPoints;
         const currency = model.genData['osy-currency'] || 'USD';
         const chartSeries = percent ? Pivot.getPercentSeries(chartModel.series) : chartModel.series;
         Pivot.updatePieSeriesControl(app, chartSeries);
+        const unitLabel = Pivot.getUnitLabel(Pivot.getFilteredUnits(model.pivotData, app.resultConfiguration));
 
         if (chartType == 'pie') {
+            // A pie has no value axis, so its units go in the footer.
+            const pieNote = unitLabel ? `Units: ${unitLabel}` : '';
+            const pieLegendHeight = app.pivotChart.showLegend
+                ? Pivot.legendRows(chartModel.categories.map(name => ({ name }))) * LEGEND_ROW_HEIGHT : 0;
             const selectedSeries = chartSeries.find(item => item.name == app.pivotChart.pieSeries) || chartSeries[0];
             const pieData = selectedSeries ? chartModel.categories
                 .map((name, index) => ({ name, value: selectedSeries.values[index] }))
@@ -369,12 +436,12 @@ export default class Pivot {
                 itemGap: LEGEND_ITEM_GAP,
                 textStyle: { fontSize: LEGEND_FONT_SIZE }
             },
-                graphic: pieData.length ? [] : [{
+                graphic: Pivot.unitFooter(pieNote, pieLegendHeight).concat(pieData.length ? [] : [{
                     type: 'text',
                     left: 'center',
                     top: 'middle',
                     style: { text: 'No positive data is available for this series.', fill: '#666' }
-                }],
+                }]),
                 series: selectedSeries ? [{
                     name: selectedSeries.name,
                     type: 'pie',
@@ -401,10 +468,25 @@ export default class Pivot {
         // Space the bracket rows need below the plot; the legend gets what is left of its half.
         const axisHeight = !horizontal && grouped ? levels * 22 + 6 : 6;
         const legendHeight = app.pivotChart.showLegend ? Pivot.getLegendHeight(chartSeries, axisHeight) : 12;
+        // Upright charts have little room beside the value axis, so a long list moves to the footer.
+        // Rotated charts keep the full label, which reads along the width.
+        const unitOverflow = !horizontal && unitLabel.length > UNIT_LABEL_MAX_CHARS;
+        const unitNote = unitOverflow ? `Y-axis units: ${unitLabel}` : '';
+        const noteHeight = unitNote ? UNIT_FOOTER_HEIGHT : 0;
         // The bracket rows are offset axes that containLabel does not measure, so reserve them here.
-        const bottomHeight = legendHeight + axisHeight;
+        const bottomHeight = legendHeight + axisHeight + noteHeight;
+        // Clear the widest value label, which grows with the magnitude plotted: 250,000.00 needs far
+        // more room than 25.00, and a fixed gap would sit the unit name on top of the numbers.
+        const extent = Pivot.getValueExtent(chartSeries, chartModel.categories.length, stacking, percent);
+        const valueLabelWidth = Pivot.textWidth(
+            Pivot.formatChartValue(extent, valueFormat, percent, currency), 12);
         const axisValue = {
             type: 'value',
+            name: unitOverflow ? 'Multiple units' : unitLabel,
+            nameLocation: 'middle',
+            nameRotate: horizontal ? 0 : 90,
+            nameGap: horizontal ? 26 : Math.ceil(valueLabelWidth) + 14,
+            nameTextStyle: { fontSize: 11, color: '#4b5563' },
             axisLabel: { formatter: value => Pivot.formatChartValue(value, valueFormat, percent, currency) }
         };
 
@@ -443,6 +525,8 @@ export default class Pivot {
                 left: horizontal && grouped ? Math.max(75, levelOffsets.total) : 75,
                 containLabel: !(horizontal && grouped)
             },
+            graphic: Pivot.unitFooter(unitNote,
+                app.pivotChart.showLegend ? Pivot.legendRows(chartSeries) * LEGEND_ROW_HEIGHT : 0),
             xAxis: horizontal ? axisValue : categoryAxis,
             yAxis: horizontal ? categoryAxis : axisValue,
             series: chartSeries.map(itemSeries => ({
