@@ -783,65 +783,25 @@ li {
 }
 
 
-.wj-content {
-    display: inline-block;
-    /* border: 1px solid  rgba(0,0,0,.2); */
-    border: 1px solid  var(main-darker-color);
-    border-radius: 0px!important; 
-    /* overflow: hidden; */
-}
 
-.wj-control .wj-input-group .wj-form-control {
-    min-height: 2.3em!important;
-}
 
-.wj-control {
-    color: var(--main-color);
-}
 
-.wj-state-selected, .wj-state-last-selected {
-    background: var(--second-color);
-    color: #fff;
-}
 
-.wj-vars{
-    min-width: 290px!important;
-    max-height: 600px!important;
-    height:600px!important;
-}
-.wj-labeled-input{
+.osy-labeled-input{
     padding: 0px 0px 10px 0px!important;
     margin:0px!important;
 }
-.wj-labeled-input>label{
+.osy-labeled-input>label{
     color: #666!important;
 }
-.wj-labeled-input>label::after{
+.osy-labeled-input>label::after{
     border: 1px solid var(--second-color)!important;
     background-color: #fff!important;
     color:var(--second-color)!important;
 }
 
-.wj-pivotpanel .wj-flexgrid .wj-cell input {
-    border: 1px solid var(--second-color)!important;
-    background-color: #fff!important;
-    color:var(--second-color)!important;
-}
-
-/* .wj-pivotpanel .wj-flexgrid .wj-cell label input[type=checkbox] {
-    border: 1px solid var(--second-color)!important;
-    background-color: #fff!important;
-    color:var(--second-color)!important;
-} */
 
 /* chart pivot */
-.wj-flexchart {
-    height: 470px;
-    padding: 15px 10px;
-    background: #fff;
-    border: 1px solid #e4e4e4; 
-    /* background: 0 0; */
-}
 .pivot-chart-select {
     display: inline-block;
     width: 150px;
@@ -863,12 +823,6 @@ li {
     align-items: center;
     justify-content: center;
     color: #666;
-}
-.wj-pivotpanel {
-    min-height: 500px!important;
-    /* background: 0 0!important; */
-    border: 1px solid #e4e4e4;
-    background: #fff;
 }
 
 /* Results field panel: preserve the compact two-column layout of the former MUIO panel. */
@@ -940,43 +894,11 @@ li {
 .result-field-settings [hidden] { display: none; }
 
 /*wijmo solution for green check boxes*/
-.wj-pivotpanel .wj-flexgrid .wj-cell label input[type='checkbox'] {
-    border: 1px solid var(--second-color) !important;
-    background-color: #fff !important;
-    color: var(--second-color) !important;
-  }
-  
-  .wj-pivotpanel .wj-flexgrid .wj-cell label input[type='checkbox'] {
-      -webkit-appearance: none;
-      padding: 7px;
-      border-radius: 0px;
-      /* background-color: #fafafa;
-      border: 1px solid #cacece;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05), inset 0px -15px 10px -12px rgba(0,0,0,0.05);
-      display: inline-block;*/
-      position: relative; 
-  }
   
   
-  /* .wj-pivotpanel .wj-flexgrid .wj-cell label input[type='checkbox']:active, .wj-pivotpanel .wj-flexgrid .wj-cell label input[type='checkbox']:checked:active {
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05), inset 0px 1px 3px rgba(0,0,0,0.1);
-  } */
+  
 /*   
-  .wj-pivotpanel .wj-flexgrid .wj-cell label input[type='checkbox']:checked {
-      background-color: #e9ecee;
-      border: 1px solid #adb8c0;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05), inset 0px -15px 10px -12px rgba(0,0,0,0.05), inset 15px 10px -12px rgba(255,255,255,0.1);
-      color: #99a1a7;
-  } */
   
-  .wj-pivotpanel .wj-flexgrid .wj-cell label input[type='checkbox']:checked:after {
-      content: '\2714';
-      font-size: 14px;
-      position: absolute;
-      top: -2px;
-      left: 2px;
-      color: #99a1a7;
-  }
 
   .sankey-link-colors {
     /* fill-opacity: 0.5 !important; */
