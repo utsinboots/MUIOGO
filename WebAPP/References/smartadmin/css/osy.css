@@ -789,7 +789,8 @@ li {
 
 .osy-labeled-input{
     padding: 0px 0px 10px 0px!important;
-    margin:0px!important;
+    /* These sit side by side floated right, so the left margin is what separates them. */
+    margin: 0px 0px 0px 18px!important;
 }
 .osy-labeled-input>label{
     color: #666!important;
@@ -858,7 +859,9 @@ li {
 .result-panel-chip-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .result-panel-placeholder { height: 22px; margin: 0; border: 1px dashed #a9b2c0; background: #f0f4f8; }
 .result-panel-controls { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 0; }
-.result-panel-controls label { margin: 0; font-weight: normal; }
+/* Flex centres the checkbox against its caption instead of pinning it to the top. */
+.result-panel-controls label { display: flex; align-items: center; margin: 0; font-weight: normal; }
+.result-panel-controls .result-panel-defer { margin: 0 5px 0 0; }
 .result-panel-menu { position: fixed; z-index: 1060; width: 168px; padding: 5px 0; border: 1px solid #c8c8c8; background: #fff; box-shadow: 0 3px 8px rgba(0,0,0,.2); }
 .result-panel-menu-command { display: block; width: 100%; padding: 5px 12px; border: 0; background: #fff; color: #46505e; text-align: left; font-size: 12px; }
 .result-panel-menu-command:hover:not(:disabled) { background: #edf2f7; }

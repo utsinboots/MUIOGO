@@ -611,6 +611,18 @@ export default class Pivot {
         }
     }
 
+    // Show or hide the results table below the chart.
+    static setTableHidden(app, hidden) {
+        const grid = document.querySelector('#pivotGrid');
+        if (!grid) return;
+        app.pivotChart.hideTable = hidden === true;
+        grid.style.display = app.pivotChart.hideTable ? 'none' : '';
+        // Tabulator measures nothing while the table is display:none, so it needs a redraw once shown again.
+        if (!app.pivotChart.hideTable && app.resultGrid && app.resultGrid.table && app.resultGrid.tableReady) {
+            app.resultGrid.table.redraw(true);
+        }
+    }
+
     // Tick or clear the totals checkboxes to match the layout currently in effect.
     static syncTotalsControls(state) {
         const rowTotals = document.querySelector('#showRowTotals');
@@ -779,8 +791,10 @@ export default class Pivot {
             sortableFields: ['Year'],
             toggleFieldSort: fieldName => app.state.setDescending(fieldName, !app.state.descending[fieldName])
         });
-        app.pivotChart = { header: '', chartType: 'column', stacking: 'normal', showLegend: true, pieSeries: '' };
+        app.pivotChart = { header: '', chartType: 'column', stacking: 'normal', showLegend: true, pieSeries: '', hideTable: false };
         Pivot.activeApp = app;
+        // Rebuilding the page keeps the old element, so clear any hiding left over from the previous app.
+        Pivot.setTableHidden(app, false);
         Pivot.renderResults(app, model);
         Pivot.bindChartLifecycle(app);
 
@@ -949,6 +963,11 @@ export default class Pivot {
         $("#hideLegend").click(function (e) {
             app.pivotChart.showLegend = !e.target.checked;
             Pivot.renderChart(app, model);
+        });
+
+        $("#hideTable").off('click');
+        $("#hideTable").click(function (e) {
+            Pivot.setTableHidden(app, e.target.checked);
         });
 
         $("#showLog").off('click');

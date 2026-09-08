@@ -1,7 +1,6 @@
 import { escapeHtml } from "./Html.Class.js";
 
-// Checkbox dropdown with a search box and a select-all, replacing the Wijmo MultiSelect.
-// Checked state lives on the items as `$checked`, so callers can set it and reassign itemsSource.
+// Checkbox dropdown with a search box and a select-all, checked state held on each item as $checked.
 export class MultiSelect {
 
     constructor(selector, options = {}) {
