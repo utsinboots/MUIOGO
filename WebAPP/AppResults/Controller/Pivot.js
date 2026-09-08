@@ -611,6 +611,27 @@ export default class Pivot {
         }
     }
 
+    // Remember what this model was left on. Held in memory, so navigating keeps it but a reload starts clean.
+    static saveSnapshot(model) {
+        Pivot.lastSnapshot = { casename: model.casename, group: model.group, param: model.param, view: model.VIEW };
+    }
+
+    // The remembered start point for this model, used to open the right variable instead of the default.
+    static startPoint(casename) {
+        const last = Pivot.lastSnapshot;
+        return last && last.casename == casename ? last : null;
+    }
+
+    // The variable is already open by now, so only a saved view is left to reapply.
+    static restoreSnapshot(model) {
+        const last = Pivot.startPoint(model.casename);
+        if (!last) return;
+        // 'null' is the Default view entry, and a view can since have been deleted; neither needs reapplying.
+        const hasView = last.view && last.view != 'null' &&
+            (model.VIEWS || []).some(item => item['osy-viewId'] == last.view);
+        if (hasView) $('#cmbViews').val(last.view).trigger('change');
+    }
+
     // Show or hide the results table below the chart.
     static setTableHidden(app, hidden) {
         const grid = document.querySelector('#pivotGrid');
@@ -632,13 +653,14 @@ export default class Pivot {
     }
 
     // Resize the chart with the window and dispose it when the page unloads.
-    static bindChartLifecycle(app) {
+    static bindChartLifecycle(app, model) {
         $(window).off('.muiopivot');
         $(window).on('resize.muiopivot', () => {
             if (Pivot.chart && !Pivot.chart.isDisposed()) Pivot.chart.resize();
         });
         $(window).on('hashchange.muiopivot', () => {
             if (window.location.hash == '#/Pivot') return;
+            Pivot.saveSnapshot(model);
             Pivot.disposeChart();
             Pivot.disposeResultGrid(app);
             Pivot.disposeResultPanel(app);
@@ -676,7 +698,9 @@ export default class Pivot {
                     promise.push(DUALS);
                     const VIEWS = Osemosys.getResultData(casename,'viewDefinitions.json');
                     promise.push(VIEWS);
-                    const DATA = Osemosys.getResultData(casename, 'RYT.json');
+                    // Load the remembered variable's group straight away, so nothing is rendered and thrown away.
+                    const start = Pivot.startPoint(casename);
+                    const DATA = Osemosys.getResultData(casename, (start ? start.group : 'RYT') + '.json');
                     promise.push(DATA);
                     return Promise.all(promise);
                 } else {
@@ -691,7 +715,8 @@ export default class Pivot {
             })
             .then(data => {
                 let [casename, genData, resData, VARIABLES, INDICATORS, DUALS, VIEWS, DATA] = data;
-                let model = new Model(casename, genData, resData, VARIABLES, INDICATORS, DUALS, DATA, VIEWS);
+                let model = new Model(casename, genData, resData, VARIABLES, INDICATORS, DUALS, DATA, VIEWS,
+                    Pivot.startPoint(casename));
                 this.initPage(model);
             })
             .catch(error => {
@@ -728,7 +753,8 @@ export default class Pivot {
             })
             .then(data => {
                 let [casename, genData, resData, VARIABLES, INDICATORS, DUALS, VIEWS, DATA] = data;
-                let model = new Model(casename, genData, resData, VARIABLES, INDICATORS, DUALS, DATA, VIEWS);
+                let model = new Model(casename, genData, resData, VARIABLES, INDICATORS, DUALS, DATA, VIEWS,
+                    Pivot.startPoint(casename));
                 model.refreshPage = true;
                 this.initPage(model);
                 //this.initEvents(model);
@@ -796,7 +822,7 @@ export default class Pivot {
         // Rebuilding the page keeps the old element, so clear any hiding left over from the previous app.
         Pivot.setTableHidden(app, false);
         Pivot.renderResults(app, model);
-        Pivot.bindChartLifecycle(app);
+        Pivot.bindChartLifecycle(app, model);
 
         Pivot.fillSelect('#cmbParams', model.VARIABLEOBJECT, 'value', 'name', model.param);
         $('#cmbParams').off('change').on('change', function () {
@@ -831,6 +857,7 @@ export default class Pivot {
             .catch(error => Message.dangerOsy(error));
 
         this.initEvents(model, app);
+        Pivot.restoreSnapshot(model);
     }
 
     static initEvents(model, app) {
