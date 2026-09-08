@@ -63,6 +63,28 @@ active workspace and use both `country_id` and `casename` when addressing a
 case. Leaving the workspace clears the active backend session but does not stop
 a running job.
 
+#### CLEWS results
+
+The Results page is built from MUIOGO-owned code and open-source libraries,
+Apache ECharts, Tabulator and jQuery UI, with no commercial runtime dependency.
+Vendored libraries live under `WebAPP/References/` with their licences.
+
+- `WebAPP/Classes/ResultAggregator.Class.js` owns aggregation: grouping,
+  subtotals and grand totals, value and condition filters, sorting, and the
+  Show As calculations. It has no DOM access and runs under plain Node.
+- `WebAPP/Classes/ResultLayoutState.Class.js` holds the layout the user has
+  built and notifies the renderers. Its `definition()` and `apply()` pair
+  serialises and restores a layout, and is what saved views store in
+  `viewDefinitions.json`.
+- `WebAPP/Classes/ResultPanel.Class.js` renders the field panel and its
+  drag-and-drop between areas, using jQuery UI `sortable`.
+- `WebAPP/Classes/ResultGrid.Class.js` renders the table with Tabulator, and
+  owns range selection, clipboard copy, and Show Details.
+- `WebAPP/AppResults/Controller/Pivot.js` renders the chart with ECharts, the
+  same vendored runtime OG-Core results use, and coordinates the page.
+- `WebAPP/Classes/MultiSelect.Class.js` is the checkbox dropdown used by the RES
+  Viewer.
+
 ### Runtime data and outputs
 
 CLEWS continues to use:
