@@ -99,6 +99,61 @@ export default class AddCase {
         return JSON.stringify(data);
     }
 
+    static techChanged(model, tech, field, value) {
+        if (field == 'CapUnitId' || field == 'ActUnitId') {
+            Message.bigBoxWarning('Unit change warning!', 'Changing technology unit will not recalculate entered nor default values in the model.', 3000);
+        }
+        if (field == 'Tech') {
+            model.techNames[tech.TechId] = value;
+        }
+    }
+
+    static addTech(model) {
+        let defaultTech = DefaultObj.defaultTech();
+        //JSON parse stringify gives the new technology its own arrays
+        let tech = JSON.parse(JSON.stringify(defaultTech[0], ['TechId', 'Tech', 'Desc', 'CapUnitId', 'ActUnitId', 'TG', 'IAR', 'OAR', "INCR", "ITCR", 'EAR']));
+        model.techs.unshift(tech);
+        model.techNames[tech.TechId] = tech.Tech;
+        Grid.techGrid.addRow(tech);
+        model.techCount++;
+        $("#techCount").text(model.techCount);
+    }
+
+    // Deletes by TechId and removes the technology from constraints, indicators and storage on both paths.
+    static deleteTech(model, techId) {
+        let tech = model.techs.find(obj => obj.TechId == techId);
+        if (!tech) return;
+        if (model.techs.length <= 1) {
+            Message.bigBoxWarning('Warning', 'You cannot delete. At least one technology is necessary.', 3000);
+            return;
+        }
+        let remove = () => {
+            let index = model.techs.findIndex(obj => obj.TechId == techId);
+            if (index < 0) return;
+            model.techs.splice(index, 1);
+            Grid.techGrid.deleteRow(techId);
+            delete model.techNames[techId];
+            model.techCount--;
+            $("#techCount").text(model.techCount);
+            $.each(model.constraints, function (id, conObj) {
+                conObj['CM'] = conObj['CM'].filter(item => item !== techId);
+            });
+            $.each(model.indicators, function (id, indObj) {
+                indObj['Sets'] = indObj['Sets'].filter(item => item !== techId);
+            });
+            // Storage holds one technology to and one from storage, each a TechId string, empty as "".
+            $.each(model.stg, function (id, stgObj) {
+                if (stgObj['TTS'] === techId) { stgObj['TTS'] = ""; }
+                if (stgObj['TFS'] === techId) { stgObj['TFS'] = ""; }
+            });
+        };
+        if (tech.TG.length > 0) {
+            Message.confirmationDialog('Technology deletion warning', `Technology <b>${tech.Tech}</b> has technology group membership(s). Deleting the technology could impact visualisation of results for previously run cases. Are you sure you want to proceed?`, remove);
+        } else {
+            remove();
+        }
+    }
+
     static initPage(model) {
         Message.clearMessages();
         //$('a[href="#tabComms"]').click();
@@ -113,7 +168,11 @@ export default class AddCase {
         Grid.dtbGrid(model.dailytimebrackets);
         Grid.commGrid(model.commodities);
         Grid.stgGrid(model.stg, model.techs, model.techNames);
-        Grid.techsGrid(model.techs, model.commodities, model.techGroups, model.emissions, model.commNames, model.emiNames, model.techGroupNames);
+        Grid.techsGrid(model.techs, model.commodities, model.techGroups, model.emissions, model.commNames, model.emiNames, model.techGroupNames, {
+            onChange: (tech, field, value) => AddCase.techChanged(model, tech, field, value),
+            onAdd: () => AddCase.addTech(model),
+            onDelete: tech => AddCase.deleteTech(model, tech.TechId)
+        });
       
         Grid.techGroupGrid(model.techGroups);
         Grid.emisGrid(model.emissions);
@@ -148,7 +207,6 @@ export default class AddCase {
             update: () => $("#osy-caseForm").jqxValidator("validate")
         });
 
-        let $divTech = $("#osy-gridTech");
         let $divTechGroup = $("#osy-gridTechGroup");
         let $divStg = $("#osy-gridStg");
         let $divComm = $("#osy-gridComm");
@@ -241,7 +299,6 @@ export default class AddCase {
                 //Sidebar.Load(null, null)
                 Sidebar.Reload(null);
 
-                $divTech.jqxGrid({ pagesizeoptions:['10', '25', '50', '100', '250', '500', '750', '1000']});
                 $("#osy-new").hide();
                 $('#osy-update').hide();
                 $('#osy-save').show();
@@ -317,114 +374,7 @@ export default class AddCase {
             })
         });
 
-        //TECHNOLOGIES GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addTech", "click");
-        $('#osy-caseForm').delegate("#osy-addTech", "click", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultTech = DefaultObj.defaultTech();
-            //tech grid se pravi dinalicki potrebno je updatovati model
-            //JSON parse strungify potrebno da iz nekog razloga izbacino elemente uid boundindex...
-            model.techs.unshift(JSON.parse(JSON.stringify(defaultTech[0], ['TechId', 'Tech', 'Desc', 'CapUnitId', 'ActUnitId', 'TG', 'IAR', 'OAR', "INCR", "ITCR", 'EAR'])));
-            //model.techs.push(defaultTech[0]);
-            //update technames
-            model.techNames[defaultTech[0]['TechId']] = defaultTech[0]['Tech'];
-            //add row in grid
-            $divTech.jqxGrid('addrow', null, defaultTech, 'first');
-            //upat eza broj techs u tabu
-            model.techCount++;
-            $("#techCount").text(model.techCount);
-        });
-
-        $('#osy-caseForm').undelegate(".deleteTech", "click");
-        $('#osy-caseForm').delegate(".deleteTech", "click", function (e) {
-            //$(".deleteTech").on("click", function(e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            var htmltechId = $(this).attr('data-techId');            
-            if (model.techs.length > 1 && $divTech.jqxGrid('getrows').length>1)  {
-                var techId = $divTech.jqxGrid('getcellvalue', id, 'TechId');
-                //ovdje moramo korisit id ne rowID koji ostaje nepromjenjen nakon brisanja
-                //id je index koji se mijnje ako brisemo ili dodajemo na pocetak tabele ili niza
-                //sortingn ne utice na rowid i id i index
-                var rowid = $divTech.jqxGrid('getrowid', id);
-
-                //var rows = $divTech.jqxGrid('getboundrows');
-                // // console.log('rows[rowId].uid ', rows[rowid].uid);
-                // // console.log('rows[id]].uid ', rows[id].uid);
-                // console.log('model.techs ',model.techs)
-                // console.log('rows ', rows)
-                // //console.log('model.techs rowid ',model.techs[rowid])
-                // console.log('model.techs TECH ',model.techs[id].Tech)
-                // console.log("TG ", model.techs[rowid].TG.length)
-
-
-                //provjera da brisemo tacnu tehnologiju
-                //console.log('techIds ', model.techs[id].TechId,techId, htmltechId,    model.techNames[techId],   model.techNames[model.techs[id].TechId],    model.techNames[htmltechId])
-                if(model.techs[id].TechId != techId ||techId != htmltechId){
-                    Message.bigBoxDanger('Technology deletion error', `Wrong index!! <b>${model.techs[id].Tech}</b>?`, 3000);
-                }
-                if(model.techs[id].TG.length>0){          
-                    Message.confirmationDialog('Technology deletion warning', `Technology <b>${model.techs[id].Tech}</b> has technology group membership(s). Deleting the technology could impact visualisation of results for previously run cases. Are you sure you want to proceed?`, model, $divTech, id, rowid, techId)
-                }
-                else{
-                    $divTech.jqxGrid('deleterow', rowid);
-                    model.techs.splice(id, 1);
-                    //update techNames
-                    delete model.techNames[techId];
-                    //update count
-                    model.techCount--;
-                    $("#techCount").text(model.techCount);
-                    //$divTech.jqxGrid('updatebounddata');
-                    //izbrisati iz model constraints eventualne tehnologijel koje smo izbrisali
-                    $.each(model.constraints, function (id, conObj) {
-                        conObj['CM'] = conObj['CM'].filter(item => item !== techId);
-                    });
-
-
-                    //izbirsati iz modela za tech nz indicators eventualne tehnologijel koje smo izbrisali
-                    $.each(model.indicators, function (id, indObj) {
-                       indObj['Sets'] = indObj['Sets'].filter(item => item !== techId);
-                    });
-                    $.each(model.stg, function (id, stgObj) {
-                       stgObj['TTS'] = stgObj['TTS'].filter(item => item !== techId);
-                       stgObj['TFS'] = stgObj['TFS'].filter(item => item !== techId);
-                    });
-                }
-            }
-            else {
-                Message.bigBoxWarning('Warning', 'You cannot delete. At least one technology is necessary.', 3000);
-            }
-        });
-
-        $divTech.on('cellvaluechanged', function (event) {
-            Pace.restart();
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            if (column == 'CapUnitId' || column == 'ActUnitId') {
-                Message.bigBoxWarning('Unit change warning!', 'Changing technology unit will not recalculate entered nor default values in the model.', 3000);
-            }
-            if (column != 'IAR' && column != 'OAR' && column != 'EAR' && column != 'INCR' && column != 'ITCR'  && column != 'TG') {
-                model.techs[rowBoundIndex][column] = value;
-            } else {
-                if (value.includes(',') && value) {
-                    var array = value.split(',');
-                } else if (value) {
-                    var array = [];
-                    array.push(value);
-                } else {
-                    var array = [];
-                }
-                model.techs[rowBoundIndex][column] = array;
-            }
-            if (column == 'Tech') {
-                var techId = $divTech.jqxGrid('getcellvalue', rowBoundIndex, 'TechId');
-                model.techNames[techId] = value;
-            }
-        });
+        //TECHNOLOGIES: add, edit and delete are handled through Grid.techsGrid callbacks (see initPage)
 
         $('#osy-caseForm').undelegate("#osy-addTechGroup", "click");
         $('#osy-caseForm').delegate("#osy-addTechGroup", "click", function (event) {
@@ -1156,9 +1106,8 @@ export default class AddCase {
             //update tech grid to update IAR OAR EAR with new added or removed comms and emis
             if (id == 'Techs') {
                 //Grid.techsGrid(model.techs, model.commodities, model.emissions, model.commNames, model.emiNames);
-                $("#osy-gridTech" ).ready(function() {
-                    $divTech.jqxGrid('updatebounddata');
-                });   
+                // Redraw once the pane is shown: a grid measured while hidden has no header height or widths.
+                $(this).one('shown.bs.tab', () => Grid.techGrid.refresh());
             }
             else if (id == 'Constraints') {
                 $("#osy-gridConstraint" ).ready(function() {

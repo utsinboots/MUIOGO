@@ -1,6 +1,7 @@
 import { UNITS, TAGS, STORAGE_OPERATIONS } from './Const.Class.js';
 import { Message } from "./Message.Class.js";
 import { JqxSources } from "./JqxSources.Class.js";
+import { DataGrid } from "./DataGrid.Class.js";
 
 
 export class Grid {
@@ -326,7 +327,8 @@ export class Grid {
         });
     }
 
-    static techsGrid(techs, commodities, techGroups, emissions, commNames, emiNames, techGroupNames) {
+    // Technologies on the shared grid: edits go straight to the techs rows, adds and deletes to the caller.
+    static techsGrid(techs, commodities, techGroups, emissions, commNames, emiNames, techGroupNames, {onChange = null, onAdd = null, onDelete = null} = {}) {
         ///settings units
         let UnitsArray = [];
         let UnitsSettings = JSON.parse(localStorage.getItem("osy-units"));
@@ -336,227 +338,61 @@ export class Grid {
         else{
             UnitsArray = UNITS;
         }
-         
-        this.srcTechs = JqxSources.srcTech(techs);
-        this.srcTechGroups = JqxSources.srcTechGroup(techGroups);
-        this.srcComms = JqxSources.srcComm(commodities);
-        this.srcEmi = JqxSources.srcEmi(emissions);
-        this.srcUnits = JqxSources.srcUnit(JSON.stringify(UnitsArray));
 
+        // The storage grid's technology dropdown still reads this jqx adapter when its editor opens.
+        this.srcTechs = JqxSources.srcTech(techs);
         this.daTechs = new $.jqx.dataAdapter(this.srcTechs);
 
-        this.daTechGroups = new $.jqx.dataAdapter(this.srcTechGroups, {
-            autoBind: true
+        let unitNames = {};
+        $.each(UnitsArray, function (id, unit) {
+            if (!(unit.id in unitNames)) unitNames[unit.id] = unit.name;
         });
-        this.daComms = new $.jqx.dataAdapter(this.srcComms, {
-            autoBind: true
-        });
-        this.daEmi = new $.jqx.dataAdapter(this.srcEmi, {
-            autoBind: true
-        });
-        this.daUnits = new $.jqx.dataAdapter(this.srcUnits, {
-            autoBind: true
-        });
+        let units = {
+            options: () => UnitsArray.map(unit => ({ value: unit.id, text: unit.name, group: unit.group })),
+            label: id => unitNames[id] || id || ''
+        };
+        // Options are read when an editor opens, so items added in other tabs are offered.
+        let choices = (items, idField, nameField) => () => items.map(item => ({ value: item[idField], text: item[nameField], title: item.Desc }));
+        let labels = names => ids => (Array.isArray(ids) ? ids : []).map(id => names[id] || id).join(',');
+        let comms = { options: choices(commodities, 'CommId', 'Comm'), label: labels(commNames) };
 
-        var ddlUnits = function (row, value, editor) {
-            editor.jqxDropDownList({ source: this.daUnits, displayMember: 'name', valueMember: 'id', groupMember: 'group', filterable: true,theme: this.themeMaterial,filterHeight:30  });
-        }.bind(this);
+        // Unique among the other technologies, compared by row rather than by display position.
+        let uniqueName = (value, tech) => techs.some(other => other !== tech && String(other.Tech).trim() == value)
+            ? 'Technology name should be unique!' : null;
 
-        var ddlTechGroups = function (row, value, editor) {
-            // let data = this.daComms.records;
-            let data = techGroups;
-            editor.jqxDropDownList({
-                source: this.daTechGroups, displayMember: 'TechGroup', valueMember: 'TechGroupId', checkboxes: true,theme: this.themeMaterial,filterHeight:30,
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    return tooltipContent
-                }
-                , filterable: true 
-            });
-        }.bind(this);
-
-        var ddlComms = function (row, value, editor) {
-            // let data = this.daComms.records;
-            let data = commodities;
-            editor.jqxDropDownList({
-                source: this.daComms, displayMember: 'Comm', valueMember: 'CommId', checkboxes: true,theme: this.themeMaterial,filterHeight:30,
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    // $(`#${tootltipValue}`).jqxTooltip({ content: tooltipContent });
-                    // $(`#${tootltipValue}`).jqxTooltip('open', 15, 15);
-                    return tooltipContent
-                }
-                , filterable: true 
-            });
-        }.bind(this);
-
-        var ddlEmis = function (row, value, editor) {
-            // let data = this.daEmi.records;
-            let data = emissions;
-            editor.jqxDropDownList({
-                source: this.daEmi, displayMember: 'Emis', valueMember: 'EmisId', checkboxes: true,theme: this.themeMaterial,filterHeight:30,
-
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    // $(`#${tootltipValue}`).jqxTooltip({ content: tooltipContent });
-                    // $(`#${tootltipValue}`).jqxTooltip('open', 15, 15);
-                    return tooltipContent
-                }.bind(this)
-                , filterable: true 
-            });
-        }.bind(this);
-  
-        var initeditor = function (row, cellvalue, editor, celltext, pressedkey) {
-            // set the editor's current value. The callback is called each time the editor is displayed.
-            var items = editor.jqxDropDownList('getItems');
-            console.log('items ', items)
-            editor.jqxDropDownList('uncheckAll');
-            if (Array.isArray(cellvalue)) {
-                var values = cellvalue;
-            } else {
-                var values = cellvalue.split(/,\s*/);
-            }
-
-            for (var j = 0; j < values.length; j++) {
-                for (var i = 0; i < items.length; i++) {
-                    //if (items[i].label === values[j]) {
-                    if (items[i].value === values[j]) {
-                        editor.jqxDropDownList('checkIndex', i);
+        if (this.techGrid) this.techGrid.destroy();
+        this.techGrid = new DataGrid('#osy-gridTech', {
+            rows: techs,
+            key: tech => tech.TechId,
+            rangeSelection: false,
+            columns: [
+                { title: 'Technology', field: 'Tech', sortable: true, menu: true, minWidth: 120, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', minWidth: 180, text: {} },
+                { title: 'Technology group', field: 'TG', hozAlign: 'center', minWidth: 110, multi: { options: choices(techGroups, 'TechGroupId', 'TechGroup'), label: labels(techGroupNames) } },
+                { title: 'Unit of capacity', field: 'CapUnitId', hozAlign: 'center', minWidth: 90, select: units },
+                { title: 'Unit of activity', field: 'ActUnitId', hozAlign: 'center', minWidth: 90, select: units },
+                { title: 'Input Activity Ratio', field: 'IAR', hozAlign: 'center', minWidth: 110, multi: comms },
+                { title: 'Output Activity Ratio', field: 'OAR', hozAlign: 'center', minWidth: 110, multi: comms },
+                { title: 'Input To New Capacity Ratio', field: 'INCR', hozAlign: 'center', minWidth: 110, multi: comms },
+                { title: 'Input To Total Capacity Ratio', field: 'ITCR', hozAlign: 'center', minWidth: 110, multi: comms },
+                { title: 'Emission Activity Ratio', field: 'EAR', hozAlign: 'center', minWidth: 110, multi: { options: choices(emissions, 'EmisId', 'Emis'), label: labels(emiNames) } },
+                {
+                    titleHtml: '<span id="osy-addTech" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add technology</span>',
+                    headerClick: event => {
+                        if (onAdd && event.target.closest('#osy-addTech')) onAdd();
+                    },
+                    action: {
+                        html: '<span class="osy-datagrid-action deleteTech"><i class="fa fa-times danger"></i> Delete</span>',
+                        onClick: tech => {
+                            if (onDelete) onDelete(tech);
+                        }
                     }
                 }
-            }
-        }.bind(this)
-
-        var getEditorValue = function (row, cellvalue, editor) {
-            return editor.val();
-        }
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridTech').jqxGrid('getboundrows');
-            //console.log('rows ', rows)
-            var currentRowId = String($('#osy-gridTech').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Tech.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Technology name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var deleteBtnRender = function (row, column, value) {
-            //console.log(row, column, value)
-            // if (row == 0) {
-            //     return '';
-            // }
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteTech" data-techId='+value+' data-id='+row+'><i class="fa  fa-times danger"></i>Delete</span>';
-        }
-
-        var cellsrendererTechGroups = function (row, columnfield, value, defaulthtml, columnproperties) {
-            let valueNames = [];
-            if (Array.isArray(value)) {
-                var values = value;
-            } else {
-                var values = value.split(/,\s*/);
-            }
-            $.each(values, function (id, techGroupId) {
-                valueNames.push(techGroupNames[techGroupId])
-            });
-            return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${valueNames} </div>`;
-        }.bind(this);
-
-        var cellsrendererComms = function (row, columnfield, value, defaulthtml, columnproperties) {
-            let valueNames = [];
-            // console.log('value ', value)
-            if (Array.isArray(value)) {
-                var values = value;
-            } else {
-                var values = value.split(/,\s*/);
-            }
-            $.each(values, function (id, commId) {
-                valueNames.push(commNames[commId])
-            });
-
-            // console.log('valueNames ', valueNames)
-            return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${valueNames} </div>`;
-        }.bind(this);
-
-        var cellsrendererEmis = function (row, columnfield, value, defaulthtml, columnproperties) {
-            let valueNames = [];
-            if (Array.isArray(value)) {
-                var values = value;
-            } else {
-                var values = value.split(/,\s*/);
-            }
-            $.each(values, function (id, emisId) {
-                valueNames.push(emiNames[emisId])
-            });
-            return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${valueNames} </div>`;
-        }.bind(this);
-
-        var tooltiprenderer = function (element) {
-            let id = $(element).text();
-            // // let tooltip = {
-            // //     'IAR': 'Input  <br />Activity Ratio',
-            // //     'OAR': 'Output  <br />Activity Ratio',
-            // //     'EAR': 'Emission  <br />Activity Ratio',
-            // //     'INCR': 'Input To New <br />Capacity Ratio',
-            // //     'ITCR': 'Input To Total <br />Capacity Ratio',
-            // //     'TMPAL': 'Total Technology Model <br />Period Activity Lower Limit',
-            // //     'TMPAU': 'Total Technology Model <br />Period Activity Upper Limit',
-            // //     'CAU': 'Capacity To Activity <br />Unit',
-            // //     'OL': 'Operational Life'
-            // // }
-            $(element).parent().jqxTooltip({ position: 'mouse', content: id, theme: this.themeMaterial });
-            //return '<div style="text-align: center; margin-top: 12px; word-wrap:wrap;white-space:normal;">' + element + '</div>';
-            //$("#filmPicture1").jqxTooltip({ content: '<b>Title:</b> <i>The Amazing Spider-man</i><br /><b>Year:</b> 2012', position: 'mouse', name: 'movieTooltip'});
-        }
-
-
-        let height = $(window).height() - 370;
-        $("#osy-gridTech").jqxGrid({
-            width: '100%',
-            //autoheight: true,
-            // columnsheight: 50,
-            height: height,
-            theme: this.theme(),
-            source: this.daTechs,
-            editable: true,
-            filterable: true,
-            selectionmode: 'none',
-            showsortcolumnbackground: false,
-            enablehover: false,
-            sortable: true,
-            autoshowcolumnsmenubutton: false,
-            // pageable: true,
-            // pagesize: 20,
-            //pagesizeoptions: ['10', '25', '50', '100', '250', '500', '750', '1000'],
-            
-            columns: [
-                //{ text: 'techId', datafield: 'TechId', hidden: true },
-                { text: 'Technology', datafield: 'Tech', width: '8%', align: 'center', cellsalign: 'left', validation: validation_1, fiterable: true },
-                { text: 'Description', datafield: 'Desc', width: '15%', align: 'center', cellsalign: 'left',sortable: false, menu:false },
-                { text: 'Technology group', datafield: 'TG', width: '7%',  cellsrenderer: cellsrendererTechGroups, rendered: tooltiprenderer, columntype: 'dropdownlist', createeditor: ddlTechGroups, align: 'center', cellsalign: 'center', initeditor: initeditor, geteditorvalue: getEditorValue,sortable: false, menu:false },
-                { text: 'Unit of capacity', datafield: 'CapUnitId', width: '7%', columntype: 'dropdownlist', rendered: tooltiprenderer, createeditor: ddlUnits, align: 'center', cellsalign: 'center',sortable: false, menu:false },
-                { text: 'Unit of activity', datafield: 'ActUnitId', width: '7%', columntype: 'dropdownlist', rendered: tooltiprenderer, createeditor: ddlUnits, align: 'center', cellsalign: 'center',sortable: false, menu:false },
-                { text: 'Input Activity Ratio', datafield: 'IAR', width: '10%', cellsrenderer: cellsrendererComms, rendered: tooltiprenderer, columntype: 'dropdownlist', createeditor: ddlComms, align: 'center', cellsalign: 'center', initeditor: initeditor, geteditorvalue: getEditorValue,sortable: false, menu:false },
-                { text: 'Output Activity Ratio', datafield: 'OAR', width: '10%', cellsrenderer: cellsrendererComms, rendered: tooltiprenderer, columntype: 'dropdownlist', createeditor: ddlComms, align: 'center', cellsalign: 'center', initeditor: initeditor, geteditorvalue: getEditorValue,sortable: false, menu:false },
-                { text: 'Input To New Capacity Ratio', datafield: 'INCR', width: '9%', cellsrenderer: cellsrendererComms, rendered: tooltiprenderer, columntype: 'dropdownlist', createeditor: ddlComms, align: 'center', cellsalign: 'center', initeditor: initeditor, geteditorvalue: getEditorValue ,sortable: false, menu:false},
-                { text: 'Input To Total Capacity Ratio', datafield: 'ITCR', width: '9%', cellsrenderer: cellsrendererComms, rendered: tooltiprenderer, columntype: 'dropdownlist', createeditor: ddlComms, align: 'center', cellsalign: 'center', initeditor: initeditor, geteditorvalue: getEditorValue,sortable: false, menu:false },
-                { text: 'Emission Activity Ratio', datafield: 'EAR', width: '9%', cellsrenderer: cellsrendererEmis, rendered: tooltiprenderer, columntype: 'dropdownlist', createeditor: ddlEmis, align: 'center', cellsalign: 'center', initeditor: initeditor, geteditorvalue: getEditorValue,sortable: false, menu:false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addTech" class="btn btn-white btn-osy" ><i class="fa fa-plus fa-lg"></i>Add technology</span>', datafield: 'TechId', width: '9%', cellsrenderer: deleteBtnRender, editable: false, sortable: false, menu:false },
-            ]
-   
-        })
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
+        });
+        return this.techGrid;
     }
 
     static techGroupGrid(groups) {

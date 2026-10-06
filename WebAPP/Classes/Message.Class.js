@@ -219,8 +219,8 @@ export class Message {
         });
     }
 
-    static confirmationDialog(title, msg, model, $divTech, id, rowid, techId) {
-        console.log('MODEL ', model)
+    // onConfirm runs when Yes is pressed; the caller does the deletion.
+    static confirmationDialog(title, msg, onConfirm) {
         $.SmartMessageBox({
             title : "<i class='fa fa-exclamation-triangle danger'></i> " +title,
             content : msg,
@@ -235,17 +235,7 @@ export class Message {
                     iconSmall : "fa fa-check fa-2x fadeInRight animated",
                     timeout : 4000
                 });
-                $divTech.jqxGrid('deleterow', rowid);
-                model.techs.splice(id, 1);
-                //update techNames
-                delete model.techNames[techId];
-                //update count
-                model.techCount--;
-                $("#techCount").text(model.techCount);
-                //izbrisati iz model constraints eventualne tehnologijel koje smo izbrisali
-                $.each(model.constraints, function (id, conObj) {
-                    conObj['CM'] = conObj['CM'].filter(item => item !== techId);
-                });
+                onConfirm();
             }
             if (ButtonPressed === "No") {
                 $.smallBox({

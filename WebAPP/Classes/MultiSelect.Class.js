@@ -9,6 +9,8 @@ export class MultiSelect {
         this.placeholder = options.placeholder || 'Select';
         this.headerFormat = options.headerFormat || '{count} selected';
         this.displayMemberPath = options.displayMemberPath || 'text';
+        // Optional item field shown as a tooltip, e.g. a description.
+        this.titleMemberPath = options.titleMemberPath || null;
         this.showSelectAllCheckbox = options.showSelectAllCheckbox !== false;
         this.showFilterInput = options.showFilterInput !== false;
         this.checkedItemsChanged = options.checkedItemsChanged || null;
@@ -110,7 +112,9 @@ export class MultiSelect {
         visible.forEach((item, index) => {
             if (item.$checked === true) checked++;
             const label = escapeHtml(String(item[this.displayMemberPath] ?? ''));
-            rows.push(`<label class="muio-multiselect-item"><input type="checkbox" data-index="${index}"` +
+            const title = this.titleMemberPath && item[this.titleMemberPath]
+                ? ` title="${escapeHtml(String(item[this.titleMemberPath]))}"` : '';
+            rows.push(`<label class="muio-multiselect-item"${title}><input type="checkbox" data-index="${index}"` +
                 `${item.$checked ? ' checked' : ''}><span>${label}</span></label>`);
         });
         this.list.innerHTML = rows.length ? rows.join('') : '<p class="muio-multiselect-empty">No matching items.</p>';
