@@ -1,0 +1,283 @@
+/* Shared editable grid (Classes/DataGrid.Class.js), styled like the jqxGrid screens it replaces. */
+.osy-datagrid.tabulator {
+    border: 1px solid #d4d8de;
+    color: var(--main-color);
+    background: #fff;
+    font-size: 12px;
+}
+
+.osy-datagrid .tabulator-header {
+    background: #fff;
+    border-bottom: 2px solid var(--main-color);
+    color: var(--main-color);
+    font-weight: 700;
+}
+
+.osy-datagrid .tabulator-header .tabulator-col {
+    background: #fff;
+    border-right: 1px solid #e0e3e8;
+}
+
+/* Headings keep their background on hover: the sort arrow and menu button already show what is interactive. */
+.osy-datagrid.tabulator .tabulator-header .tabulator-col.tabulator-sortable.tabulator-col-sorter-element:hover {
+    background: #fff;
+    cursor: default;
+}
+
+/* The title box fills the column, so titles centre across it and sit level with wrapped ones. */
+.osy-datagrid .tabulator-header .tabulator-col .tabulator-col-content {
+    height: 100%;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.osy-datagrid .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title-holder {
+    width: 100%;
+}
+
+/* Static holder and content: the arrow and menu button then position against the full-height column. */
+.osy-datagrid .tabulator-header .tabulator-col.osy-datagrid-menu-col .tabulator-col-title-holder,
+.osy-datagrid .tabulator-header .tabulator-col.osy-datagrid-menu-col .tabulator-col-content {
+    position: static;
+}
+
+/* No arrow until a column is sorted, as jqxGrid did; the third click clears the sort and hides it again. */
+.osy-datagrid .tabulator-header .tabulator-col[aria-sort="none"] .tabulator-col-sorter {
+    display: none;
+}
+
+/* Matches Tabulator's own selector depth, which otherwise keeps the arrow at right:4px under the menu button. */
+.osy-datagrid .tabulator-header .tabulator-col.osy-datagrid-menu-col .tabulator-col-content .tabulator-col-sorter {
+    right: 28px;
+}
+
+/* Column titles are centred and wrap, so headings such as "Input To Total Capacity Ratio" stay readable. */
+.osy-datagrid .tabulator-header .tabulator-col .tabulator-col-title {
+    white-space: normal;
+    text-align: center;
+}
+
+.osy-datagrid .tabulator-row {
+    min-height: 32px;
+    background: #fff;
+    border-bottom: 0;
+}
+
+.osy-datagrid .tabulator-row:hover {
+    background: #f5f7fa;
+}
+
+/* 32px rows, the jqxGrid default these grids used (rowsheight: 32). */
+.osy-datagrid .tabulator-row .tabulator-cell {
+    padding: 0 8px;
+    line-height: 31px;
+    border-right: 1px solid #e0e3e8;
+    border-bottom: 1px solid #e0e3e8;
+}
+
+/* The row action fills its cell, so the row keeps its height and the button has no gap above or below. */
+.osy-datagrid .tabulator-row .tabulator-cell.osy-datagrid-action-cell {
+    padding: 0;
+}
+
+/* Frozen label columns stay legible while the rest scrolls, as jqxGrid's pinned cells did. */
+.osy-datagrid .tabulator-row .tabulator-cell.tabulator-frozen {
+    background: #fbfbfc;
+    font-weight: 700;
+}
+
+.osy-datagrid .tabulator-header .tabulator-col.tabulator-frozen {
+    background: #fbfbfc;
+}
+
+.osy-datagrid .tabulator-placeholder .tabulator-placeholder-contents {
+    color: #687184;
+    font-size: 12px;
+}
+
+/* Scenario colours from the jqxGrid rules in osy.css, covering frozen columns too, as they did. */
+.osy-datagrid .tabulator-row.SC_1 .tabulator-cell { background-color: #ffe6e6; }
+.osy-datagrid .tabulator-row.SC_2 .tabulator-cell { background-color: #e6ffe6; }
+.osy-datagrid .tabulator-row.SC_3 .tabulator-cell { background-color: #e6eeff; }
+.osy-datagrid .tabulator-row.SC_4 .tabulator-cell { background-color: #ffffe6; }
+.osy-datagrid .tabulator-row.SC_5 .tabulator-cell { background-color: #f2e6ff; }
+.osy-datagrid .tabulator-row.SC_6 .tabulator-cell { background-color: #e6faff; }
+.osy-datagrid .tabulator-row.SC_7 .tabulator-cell { background-color: #f7ffe6; }
+.osy-datagrid .tabulator-row.SC_8 .tabulator-cell { background-color: #faebf5; }
+.osy-datagrid .tabulator-row.SC_9 .tabulator-cell { background-color: #e6ffff; }
+.osy-datagrid .tabulator-row.SC_10 .tabulator-cell { background-color: #f0f0f5; }
+
+/* Selection, editing and validation must stay visible over the scenario colours. */
+.osy-datagrid .tabulator-row .tabulator-cell.tabulator-range-selected {
+    background: #82adbf;
+    color: #fff;
+}
+
+.osy-datagrid .tabulator-header .tabulator-col.tabulator-range-selected {
+    background: #39769f;
+    color: #fff;
+}
+
+.osy-datagrid .tabulator-row .tabulator-cell.tabulator-editing {
+    border: 2px solid #276fbd;
+    background: #fff;
+    color: var(--main-color);
+}
+
+.osy-datagrid .tabulator-row .tabulator-cell.tabulator-validation-fail {
+    background: #fbeeee;
+    box-shadow: inset 3px 0 #a94442;
+    color: #a94442;
+}
+
+/* Range selection takes click-drag, so keep the horizontal scrollbar reachable. */
+.osy-datagrid .tabulator-tableholder { overflow-x: auto; scrollbar-color: #a9b2c0 #eef1f5; }
+.osy-datagrid .tabulator-tableholder::-webkit-scrollbar { width: 12px; height: 12px; background: #eef1f5; }
+.osy-datagrid .tabulator-tableholder::-webkit-scrollbar-thumb { background: #a9b2c0; border: 2px solid #eef1f5; border-radius: 6px; }
+.osy-datagrid .tabulator-tableholder::-webkit-scrollbar-thumb:hover { background: #8994a3; }
+
+/* Row Delete button, styled here rather than with Bootstrap's .btn, whose padding would set the row height. */
+.osy-datagrid .osy-datagrid-action {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--main-color);
+    line-height: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.osy-datagrid .osy-datagrid-action:hover {
+    background: #f1f3f6;
+}
+
+.osy-datagrid .osy-datagrid-action .fa {
+    margin-right: 4px;
+}
+
+.osy-datagrid .tabulator-header #osy-addTech {
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+/* Column menu button: a full-height strip at the heading's right edge, with the sort arrow to its left. */
+.osy-datagrid .tabulator-header-popup-button {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    /* A fixed, padding-free box: Tabulator's own padding would otherwise reach back under the sort arrow. */
+    width: 18px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    border: 0;
+    border-left: 1px solid #e0e3e8;
+    background: #fff;
+    color: #6b7484;
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.osy-datagrid .tabulator-header-popup-button:hover {
+    border-color: var(--main-color);
+    background: #f1f3f6;
+}
+
+.osy-datagrid .tabulator-header-popup-button:hover {
+    color: var(--main-color);
+}
+
+/* Column menu: sort commands above the "Show rows where" filter. */
+.osy-grid-menu {
+    width: 200px;
+    padding: 4px 0 8px;
+    color: var(--main-color);
+    font-size: 12px;
+}
+
+.osy-grid-menu-item {
+    display: block;
+    width: 100%;
+    padding: 6px 12px;
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: left;
+}
+
+.osy-grid-menu-item:hover {
+    background: #f1f3f6;
+}
+
+.osy-grid-menu-item .fa {
+    width: 14px;
+    margin-right: 7px;
+    color: #8a8f9c;
+}
+
+.osy-grid-menu-divider {
+    margin: 5px 0;
+    border-top: 1px solid #e0e3e8;
+}
+
+.osy-grid-menu-label {
+    padding: 2px 12px 6px;
+    font-weight: 700;
+}
+
+.osy-grid-menu-condition,
+.osy-grid-menu-value,
+.osy-grid-menu-operator {
+    /* Fixed width: the longest condition, "does not contain(match case)", would stretch the menu. */
+    width: 176px;
+    max-width: 176px;
+    margin: 0 12px 6px;
+    padding: 3px 5px;
+    border: 1px solid #c4cad4;
+    border-radius: 2px;
+    background: #fff;
+    color: inherit;
+    font-size: 12px;
+}
+
+.osy-grid-menu-operator {
+    width: 66px;
+}
+
+.osy-grid-menu-actions {
+    padding: 2px 12px 0;
+    text-align: center;
+}
+
+.osy-grid-menu-actions .btn {
+    min-width: 64px;
+    margin: 0 3px;
+}
+
+/* Checkbox list opened from a grid cell (DataGrid.openMultiSelect): the panel shows without its toggle button. */
+.osy-datagrid-popup {
+    position: absolute;
+    z-index: 2000;
+}
+
+.osy-datagrid-popup .muio-multiselect-toggle {
+    display: none;
+}
+
+.osy-datagrid-popup .muio-multiselect-panel {
+    position: static;
+    margin-top: 0;
+    border-color: #bdc4cf;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, .14);
+}
