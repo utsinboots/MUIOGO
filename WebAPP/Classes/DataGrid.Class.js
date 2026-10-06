@@ -100,6 +100,7 @@ export class DataGrid {
         };
         // Share of the width under the fitColumns layout, standing in for jqxGrid's column percentages.
         if (spec.widthGrow) column.widthGrow = spec.widthGrow;
+        if (spec.visible === false) column.visible = false;
         if (spec.headerClick) column.headerClick = spec.headerClick;
         if (spec.tooltipField) {
             column.tooltip = (event, cell) => DataGrid.tooltip(cell.getData()[spec.tooltipField]);
@@ -192,7 +193,8 @@ export class DataGrid {
     // One value from a searchable list. rules: options() -> [{value, text, group}], label(value)
     static selectEditor(rules) {
         return {
-            parse: value => value == null ? '' : String(value),
+            // numeric keeps a stored number a number, e.g. a constraint's Tag.
+            parse: value => value == null || value === '' ? '' : (rules.numeric ? Number(value) : String(value)),
             problem: value => rules.options().some(option => option.value === value) ? null : 'Choose a value from the list.',
             column: {
                 editor: 'list',

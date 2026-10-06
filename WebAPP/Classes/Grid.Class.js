@@ -24,310 +24,105 @@ export class Grid {
     //     }, 100); // Adjust the duration as needed
     // }
 
-    static seGrid(seasons) {
-
-        let srcSe = JqxSources.srcSe(seasons);
-        var daSe = new $.jqx.dataAdapter(srcSe);
-
-        //console.log('daSe ', daSe)
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridSe').jqxGrid('getboundrows');
-            // compare row UIDs rather than bound indices to correctly identify the edited row
-            var currentRowId = String($('#osy-gridSe').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Se.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Season name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var cellsrendererbutton = function (row, column, value) {
-            // var id = $("#osy-gridComm").jqxGrid('getrowid', row);
-            if (row == 0) {
-                return '';
-            }
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteSe" data-id=' + row + ' ><i class="fa fa-times danger"></i>Delete</span>';
-        }
-
-        $("#osy-gridSe").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            theme: this.theme(),
-            source: daSe,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:false,
-            showsortcolumnbackground: false,
-            pageable: false,
-            pagesize: 10,
-            //pagesizeoptions: ['10', '25', '50', '100', '250', '500', '750', '1000'],
+    // Seasons: the name is fixed and only the description is editable, as in jqxGrid.
+    static seGrid(rows, {onChange = null} = {}) {
+        if (this.seGridInstance) this.seGridInstance.destroy();
+        this.seGridInstance = new DataGrid('#osy-gridSe', {
+            rows: rows,
+            key: row => row.SeId,
+            rangeSelection: false,
+            layout: 'fitColumns',
+            height: 'auto',
             columns: [
-                { text: 'SeId', datafield: 'SeId', hidden: true },
-                //{ text: 'Season name', datafield: 'Se', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Season name', datafield: 'Se', width: '10%', align: 'center', cellsalign: 'left', editable:false  },     
-                { text: 'Description', datafield: 'Desc', width: '90%', align: 'center', cellsalign: 'left',sortable: false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addSe" class="btn btn-secondary" ><i class="fa fa-plus fa-lg osy-green"></i>Add season</span>', datafield: 'Delete', width: '10%', cellsrenderer: cellsrendererbutton, editable: false, sortable: false, hidden: true },
-            ]
+                { title: 'Season name', field: 'Se', widthGrow: 10, minWidth: 110 },
+                { title: 'Description', field: 'Desc', widthGrow: 90, minWidth: 200, text: {} }
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
         });
+        return this.seGridInstance;
     }
 
-    static dtGrid(daytypes) {
-
-        let srcDt = JqxSources.srcDt(daytypes);
-        var daDt = new $.jqx.dataAdapter(srcDt);
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridDt').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridDt').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Dt.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Day type name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var cellsrendererbutton = function (row, column, value) {
-            // var id = $("#osy-gridComm").jqxGrid('getrowid', row);
-            if (row == 0) {
-                return '';
-            }
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteDt" data-id=' + row + ' ><i class="fa fa-times danger"></i>Delete</span>';
-        }
-
-        $("#osy-gridDt").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            theme: this.theme(),
-            source: daDt,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:false,
-            showsortcolumnbackground: false,
-            pageable: false,
-            pagesize: 10,
-            //pagesizeoptions: ['10', '25', '50', '100', '250', '500', '750', '1000'],
+    // Day types: the name is fixed and only the description is editable, as in jqxGrid.
+    static dtGrid(rows, {onChange = null} = {}) {
+        if (this.dtGridInstance) this.dtGridInstance.destroy();
+        this.dtGridInstance = new DataGrid('#osy-gridDt', {
+            rows: rows,
+            key: row => row.DtId,
+            rangeSelection: false,
+            layout: 'fitColumns',
+            height: 'auto',
             columns: [
-                { text: 'DtId', datafield: 'DtId', hidden: true },
-                // { text: 'Day type name', datafield: 'Dt', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Day type name', datafield: 'Dt', width: '10%', align: 'center', cellsalign: 'left', editable:false  },
-                { text: 'Description', datafield: 'Desc', width: '90%', align: 'center', cellsalign: 'left',sortable: false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addDt" class="btn btn-secondary" ><i class="fa fa-plus fa-lg osy-green"></i>Add day type</span>', datafield: 'Delete', width: '10%', cellsrenderer: cellsrendererbutton, editable: false, sortable: false, hidden: true },
-            ]
+                { title: 'Day type name', field: 'Dt', widthGrow: 10, minWidth: 110 },
+                { title: 'Description', field: 'Desc', widthGrow: 90, minWidth: 200, text: {} }
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
         });
+        return this.dtGridInstance;
     }
 
-    static dtbGrid(dailytimebracket) {
-
-        let srcDtb = JqxSources.srcDtb(dailytimebracket);
-        var daDtb = new $.jqx.dataAdapter(srcDtb);
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridDtb').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridDtb').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Dtb.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Daily time bracket name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var cellsrendererbutton = function (row, column, value) {
-            // var id = $("#osy-gridComm").jqxGrid('getrowid', row);
-            if (row == 0) {
-                return '';
-            }
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteDtb" data-id=' + row + ' ><i class="fa fa-times danger"></i>Delete</span>';
-        }
-
-        $("#osy-gridDtb").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            theme: this.theme(),
-            source: daDtb,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:false,
-            showsortcolumnbackground: false,
-            pageable: false,
-            pagesize: 10,
-            //pagesizeoptions: ['10', '25', '50', '100', '250', '500', '750', '1000'],
+    // Daily time brackets: the name is fixed and only the description is editable, as in jqxGrid.
+    static dtbGrid(rows, {onChange = null} = {}) {
+        if (this.dtbGridInstance) this.dtbGridInstance.destroy();
+        this.dtbGridInstance = new DataGrid('#osy-gridDtb', {
+            rows: rows,
+            key: row => row.DtbId,
+            rangeSelection: false,
+            layout: 'fitColumns',
+            height: 'auto',
             columns: [
-                { text: 'DtbId', datafield: 'DtbId', hidden: true },
-                // { text: 'Daily time bracket name', datafield: 'Dtb', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Daily time bracket name', datafield: 'Dtb', width: '10%', align: 'center', cellsalign: 'left', editable:false },
-                { text: 'Description ', datafield: 'Desc', width: '90%', align: 'center', cellsalign: 'left',sortable: false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addDtb" class="btn btn-secondary" ><i class="fa fa-plus fa-lg osy-green"></i>Add daily time bracket</span>', datafield: 'Delete', width: '10%', cellsrenderer: cellsrendererbutton, editable: false, sortable: false, hidden: true },
-            ]
+                { title: 'Daily time bracket name', field: 'Dtb', widthGrow: 10, minWidth: 110 },
+                { title: 'Description', field: 'Desc', widthGrow: 90, minWidth: 200, text: {} }
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
         });
+        return this.dtbGridInstance;
     }
 
-    static tsGrid(timeslices, seasons, daytypes, dailytimebrackets, seNames, dtNames, dtbNames) {
+    // Time slices on the shared grid: the season, day type and bracket columns show names and store IDs.
+    static tsGrid(timeslices, seasons, daytypes, dailytimebrackets, seNames, dtNames, dtbNames, {onChange = null, onAdd = null, onDelete = null} = {}) {
+        let uniqueName = (value, slice) => timeslices.some(other => other !== slice && String(other.Ts).trim() == value)
+            ? 'Year split name should be unique!' : null;
+        // Options are read when an editor opens, so seasons added meanwhile are offered.
+        let choices = (items, idField, nameField) => () => items.map(item => ({ value: item[idField], text: item[nameField], title: item.Desc }));
+        let label = names => id => names[id] || id || '';
 
-        let srcTs = JqxSources.srcTs(timeslices);
-        let srcSe = JqxSources.srcSe(seasons);
-        let srcDt = JqxSources.srcDt(daytypes);
-        let srcDtb = JqxSources.srcDtb(dailytimebrackets);
-
-        var daTs = new $.jqx.dataAdapter(srcTs, {
-            autoBind: true
-        });
-        this.daSe = new $.jqx.dataAdapter(srcSe, {
-            autoBind: true
-        });
-
-        this.daDt = new $.jqx.dataAdapter(srcDt, {
-            autoBind: true
-        });
-        this.daDtb = new $.jqx.dataAdapter(srcDtb, {
-            autoBind: true
-        });
-
-        var ddlSeasons = function (row, value, editor) {
-            let data = seasons;
-            editor.jqxDropDownList({
-                source: this.daSe, displayMember: 'Se', valueMember: 'SeId',theme: this.themeMaterial,filterHeight:30,
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    return tooltipContent
-                }, filterable: true 
-            });
-        }.bind(this);
-
-        var ddlDatypes = function (row, value, editor) {
-            let data = daytypes;
-            editor.jqxDropDownList({
-                source: this.daDt, displayMember: 'Dt', valueMember: 'DtId',theme: this.themeMaterial,filterHeight:30, 
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    return tooltipContent
-                }, filterable: true 
-            });
-        }.bind(this);
-
-        var ddlDilytimebrackets = function (row, value, editor) {
-            let data = dailytimebrackets;
-            editor.jqxDropDownList({
-                source: this.daDtb, displayMember: 'Dtb', valueMember: 'DtbId',theme: this.themeMaterial,filterHeight:30, 
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    return tooltipContent
-                }, filterable: true 
-            });
-        }.bind(this);
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridTs').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridTs').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Ts.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Year split name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var cellsrendererbutton = function (row, column, value) {
-            // var id = $("#osy-gridComm").jqxGrid('getrowid', row);
-            if (row == 0) {
-                return '';
-            }
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteTs" data-id=' + row + ' ><i class="fa fa-times danger"></i>Delete</span>';
-        }
-
-        var cellsrendererSeasons = function (row, columnfield, value, defaulthtml, columnproperties) {
-            return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${seNames[value]} </div>`;
-        }.bind(this);
-
-        var cellsrendererDaytypes = function (row, columnfield, value, defaulthtml, columnproperties) {
-            return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${dtNames[value]} </div>`;
-        }.bind(this);
-
-        var cellsrendererDailytimebrackets = function (row, columnfield, value, defaulthtml, columnproperties) {
-            return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${dtbNames[value]} </div>`;
-        }.bind(this);
-
-        var initeditor = function (row, cellvalue, editor, celltext, pressedkey) {
-            editor.jqxDropDownList('selectItem', cellvalue);
-        };
-
-        var getEditorValue = function (row, cellvalue, editor) {
-            return editor.val();
-        }
-
-        $("#osy-gridTs").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            theme: this.theme(),
-            source: daTs,
-            filterable: true,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:true,
-            showsortcolumnbackground: false,
-            // pageable: true,
-            // pagesize: 10,
-            //pagesizeoptions: ['10', '25', '50', '100', '250', '500', '750', '1000'],
-            autoshowcolumnsmenubutton: false,
+        if (this.tsGridInstance) this.tsGridInstance.destroy();
+        this.tsGridInstance = new DataGrid('#osy-gridTs', {
+            rows: timeslices,
+            key: slice => slice.TsId,
+            rangeSelection: false,
+            layout: 'fitColumns',
             columns: [
-                { text: 'TsId', datafield: 'TsId', hidden: true },
-                { text: 'SeId', datafield: 'SeId', hidden: true },
-                { text: 'DtId', datafield: 'DtId', hidden: true },
-                { text: 'DtbId', datafield: 'DtbId', hidden: true },
-                { text: 'Year split name', datafield: 'Ts', width: '15%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Description', datafield: 'Desc', width: '30%', align: 'center', cellsalign: 'left',sortable: false, menu:false },  
-                { text: 'Season', datafield: 'SE', width: '15%',cellsrenderer: cellsrendererSeasons, initeditor:initeditor, geteditorvalue: getEditorValue, columntype: 'dropdownlist', createeditor: ddlSeasons,  align: 'center', cellsalign: 'center', sortable: false, menu:false },
-                { text: 'Day type', datafield: 'DT', width: '15%', cellsrenderer: cellsrendererDaytypes,  initeditor:initeditor,geteditorvalue: getEditorValue, columntype: 'dropdownlist', createeditor: ddlDatypes,  align: 'center', cellsalign: 'center', sortable: false, menu:false },
-                { text: 'Daily time', datafield: 'DTB', width: '15%', cellsrenderer: cellsrendererDailytimebrackets,  initeditor:initeditor,geteditorvalue: getEditorValue, columntype: 'dropdownlist', createeditor: ddlDilytimebrackets,  align: 'center', cellsalign: 'center', sortable: false, menu:false },
-
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addTs" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add year split</span>', datafield: 'Delete', width: '10%', cellsrenderer: cellsrendererbutton, editable: false, sortable: false, menu:false },
-            ]
+                { title: 'Year split name', field: 'Ts', sortable: true, menu: true, widthGrow: 15, minWidth: 110, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', widthGrow: 35, minWidth: 150, text: {} },
+                { title: 'Season', field: 'SE', hozAlign: 'center', widthGrow: 13, minWidth: 90, select: { options: choices(seasons, 'SeId', 'Se'), label: label(seNames) } },
+                { title: 'Day type', field: 'DT', hozAlign: 'center', widthGrow: 13, minWidth: 90, select: { options: choices(daytypes, 'DtId', 'Dt'), label: label(dtNames) } },
+                { title: 'Daily time bracket', field: 'DTB', hozAlign: 'center', widthGrow: 14, minWidth: 110, select: { options: choices(dailytimebrackets, 'DtbId', 'Dtb'), label: label(dtbNames) } },
+                {
+                    titleHtml: '<span id="osy-addTs" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add year split</span>',
+                    headerClick: event => {
+                        if (onAdd && event.target.closest('#osy-addTs')) onAdd();
+                    },
+                    widthGrow: 10,
+                    minWidth: 95,
+                    action: {
+                        html: '<span class="osy-datagrid-action deleteTs"><i class="fa fa-times danger"></i> Delete</span>',
+                        visible: slice => timeslices.indexOf(slice) !== 0,
+                        onClick: slice => {
+                            if (onDelete) onDelete(slice);
+                        }
+                    }
+                }
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
         });
+        return this.tsGridInstance;
     }
 
-    // Technologies on the shared grid: edits go straight to the techs rows, adds and deletes to the caller.
     static techsGrid(techs, commodities, techGroups, emissions, commNames, emiNames, techGroupNames, {onChange = null, onAdd = null, onDelete = null} = {}) {
         ///settings units
         let UnitsArray = [];
@@ -338,10 +133,6 @@ export class Grid {
         else{
             UnitsArray = UNITS;
         }
-
-        // The storage grid's technology dropdown still reads this jqx adapter when its editor opens.
-        this.srcTechs = JqxSources.srcTech(techs);
-        this.daTechs = new $.jqx.dataAdapter(this.srcTechs);
 
         let unitNames = {};
         $.each(UnitsArray, function (id, unit) {
@@ -524,494 +315,189 @@ export class Grid {
         return this.emisGridInstance;
     }
 
-    static stgGrid(storages, techs, techNames) {
-
-        ///settings units
-        let UnitsArray = [];
-        let UnitsSettings = JSON.parse(localStorage.getItem("osy-units"));
-        if(UnitsSettings){
-            UnitsArray = UnitsSettings
-        }
-        else{
-            UnitsArray = UNITS;
-        }
-
-        let srcStg = JqxSources.srcStorage(storages);
-        let srcUnits = JqxSources.srcUnit(JSON.stringify(UnitsArray));
-        this.srcTechs = JqxSources.srcTech(techs);
-
-        var daStg = new $.jqx.dataAdapter(srcStg);
-        var daUnits = new $.jqx.dataAdapter(srcUnits);
-        // var daStgOperations = new $.jqx.dataAdapter(srcStgOperations);
-        this.daTechs = new $.jqx.dataAdapter(this.srcTechs, {
-            autoBind: true
-        });
-
-
-        var ddlEditor = function (row, value, editor) {
-            editor.jqxDropDownList({ source: daUnits, displayMember: 'name', valueMember: 'id', groupMember: 'group', filterable: true,theme: this.themeMaterial,filterHeight:30 });
-        }.bind(this);
-
-        var ddlStgOperations = function (row, value, editor) {
-            editor.jqxDropDownList({ source: STORAGE_OPERATIONS, theme: 'bootstrap',theme: this.themeMaterial});
-        }.bind(this);
-
-        var ddlTechs = function (row, value, editor) {
-            let data = techs;
-            editor.jqxDropDownList({
-                source: this.daTechs, displayMember: 'Tech', valueMember: 'TechId', filterable: true ,theme: this.themeMaterial,filterHeight:30,
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    return tooltipContent
-                }    
-            });
-        }.bind(this);
-
-        var cellsrendererTechs = function (row, columnfield, value, defaulthtml, columnproperties) {
-            // let valueNames = [];
-            // if (Array.isArray(value)) {
-            //     var values = value;
-            // } else {
-            //     var values = value.split(/,\s*/);
-            // }
-            // $.each(values, function (id, techId) {
-            //     valueNames.push(techNames[techId])
-            // });
-            // return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${valueNames} </div>`;
-
-            return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${techNames[value]} </div>`;
-        }.bind(this);
-
-        var getEditorValue = function (row, cellvalue, editor) {
-            return editor.val();
-        }
-
-        var initeditor = function (row, cellvalue, editor, celltext, pressedkey) {
-            editor.jqxDropDownList('selectItem', cellvalue);
+    // Storage on the shared grid: the technology columns hold one TechId each and may be empty.
+    static stgGrid(storages, techs, techNames, {onChange = null, onAdd = null, onDelete = null} = {}) {
+        let uniqueName = (value, storage) => storages.some(other => other !== storage && String(other.Stg).trim() == value)
+            ? 'Storage name should be unique!' : null;
+        let technologies = {
+            options: () => [{ value: '', text: '' }].concat(techs.map(tech => ({ value: tech.TechId, text: tech.Tech, title: tech.Desc }))),
+            label: id => techNames[id] || id || ''
+        };
+        let operations = {
+            options: () => STORAGE_OPERATIONS.map(operation => ({ value: operation, text: operation })),
+            label: operation => operation || ''
         };
 
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridStg').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridStg').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Stg.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Storage name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var cellsrendererbutton = function (row, column, value) {
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteStg" data-id=' + row + ' ><i class="fa fa-times danger"></i>Delete</span>';
-        }
-
-        $("#osy-gridStg").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            filterable:true,
-            theme: this.theme(),
-            source: daStg,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:true,
-            showsortcolumnbackground: false,
-            pageable: false,
-            pagesize: 10,
-            autoshowcolumnsmenubutton: false,
-            //pagesizeoptions: ['10', '25', '50', '100', '250', '500', '750', '1000'],
+        if (this.stgGridInstance) this.stgGridInstance.destroy();
+        this.stgGridInstance = new DataGrid('#osy-gridStg', {
+            rows: storages,
+            key: storage => storage.StgId,
+            rangeSelection: false,
+            layout: 'fitColumns',
+            height: 'auto',
             columns: [
-                { text: 'StgId', datafield: 'StgId', hidden: true },
-                { text: 'Storage name', datafield: 'Stg', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Description', datafield: 'Desc', width: '20%', align: 'center', cellsalign: 'left',sortable: false, menu:false },
-                { text: 'Unit', datafield: 'UnitId', width: '10%', columntype: 'dropdownlist', createeditor: ddlEditor, align: 'center', cellsalign: 'center',sortable: false, menu:false },
-                
-                { text: 'Technology to storage', datafield: 'TTS', width: '15%',cellsrenderer: cellsrendererTechs, columntype: 'dropdownlist', initeditor:initeditor,createeditor: ddlTechs, geteditorvalue: getEditorValue, align: 'center', cellsalign: 'center', sortable: false, menu:false },
-                { text: 'Technology from storage', datafield: 'TFS', width: '15%',cellsrenderer: cellsrendererTechs, columntype: 'dropdownlist',initeditor:initeditor, createeditor: ddlTechs, geteditorvalue: getEditorValue, align: 'center', cellsalign: 'center', sortable: false, menu:false },
-
-                { text: 'Storage operations', datafield: 'Operation', width: '10%', columntype: 'dropdownlist', createeditor: ddlStgOperations, align: 'center', cellsalign: 'center',sortable: false, menu:false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addStg" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add storage</span>', datafield: 'Delete', width: '10%', cellsrenderer: cellsrendererbutton, editable: false, sortable: false, menu:false },
-            ]
-        });
-    }
-
-    static scenarioGrid(scenarios) {
-
-        let srcScenario = JqxSources.srcScenario(scenarios);
-        var daScenario = new $.jqx.dataAdapter(srcScenario);
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridScenario').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridScenario').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Scenario.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Scenario name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var cellsrendererbutton = function (row, column, value) {
-            // var id = $("#osy-gridComm").jqxGrid('getrowid', row);
-            if (row == 0) {
-                return '';
-            }
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-white btn-default deleteScenario" data-id=' + row + ' ><i class="fa  fa-times danger"></i>Delete</span>';
-        }
-
-        $("#osy-gridScenario").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            filterable:true,
-            theme: this.theme(),
-            source: daScenario,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:true,
-            showsortcolumnbackground: false,
-            autoshowcolumnsmenubutton: false,
-            columns: [
-                { text: 'ScenarioId', datafield: 'ScenarioId', hidden: true },
-                { text: 'Scenario name', datafield: 'Scenario', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Description', datafield: 'Desc', width: '70%', align: 'center', cellsalign: 'left',sortable: false, menu:false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addScenario" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add scenario</span>', datafield: 'Delete', width: '10%', cellsrenderer: cellsrendererbutton, editable: false, sortable: false, menu:false },
-            ]
-        });
-    }
-
-    static constraintGrid(techs, constraints, techNames) {
-
-        this.srcTechs = JqxSources.srcTech(techs);
-        this.srcTags = JqxSources.srcTag(JSON.stringify(TAGS));
-
-        this.daTech = new $.jqx.dataAdapter(this.srcTechs, {
-            autoBind: true
-        });
-        this.daTags = new $.jqx.dataAdapter(this.srcTags, {
-            autoBind: true
-        });
-
-        this.srcConstraint = JqxSources.srcConstraint(constraints, this.daTags.records);
-        this.daConstraint = new $.jqx.dataAdapter(this.srcConstraint);
-
-        var ddlTechs = function (row, value, editor) {
-            // let data = this.daTech.records;
-            let data = techs;
-            editor.jqxDropDownList({
-                source: this.daTech, displayMember: 'Tech', valueMember: 'TechId', checkboxes: true,theme: this.themeMaterial,filterHeight:30,
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    // $(`#${tootltipValue}`).jqxTooltip({ content: tooltipContent });
-                    // $(`#${tootltipValue}`).jqxTooltip('open', 15, 15);
-                    return tooltipContent
-                }
-                , filterable: true 
-            }).bind(this);
-
-
-        }.bind(this);
-
-        var ddlTags = function (row, value, editor) {
-            editor.jqxDropDownList({ source: this.daTags, displayMember: 'name', valueMember: 'id',theme: this.themeMaterial });
-        }.bind(this);
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridConstraint').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridConstraint').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Con.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Constraint name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var getEditorValue = function (row, cellvalue, editor) {
-            // let tootltipValue =cellvalue;
-            // let tooltipContent = "<div>" + tootltipValue + "</div>";
-            // editor.jqxTooltip({ content: tooltipContent });
-            // editor.jqxTooltip('open', 15, 15);
-            return editor.val();
-        }
-
-        var initeditor = function (row, cellvalue, editor, celltext, pressedkey) {
-            // set the editor's current value. The callback is called each time the editor is displayed.
-            var items = editor.jqxDropDownList('getItems');
-            editor.jqxDropDownList('uncheckAll');
-
-            if (Array.isArray(cellvalue)) {
-                var values = cellvalue;
-            } else {
-                var values = cellvalue.split(/,\s*/);
-            }
-
-            for (var j = 0; j < values.length; j++) {
-                for (var i = 0; i < items.length; i++) {
-                    //if (items[i].label === values[j]) {
-                    if (items[i].value === values[j]) {
-                        editor.jqxDropDownList('checkIndex', i);
+                { title: 'Storage name', field: 'Stg', sortable: true, menu: true, widthGrow: 20, minWidth: 110, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', widthGrow: 20, minWidth: 130, text: {} },
+                { title: 'Unit', field: 'UnitId', hozAlign: 'center', widthGrow: 10, minWidth: 80, select: this.unitColumn() },
+                { title: 'Technology to storage', field: 'TTS', hozAlign: 'center', widthGrow: 15, minWidth: 110, select: technologies },
+                { title: 'Technology from storage', field: 'TFS', hozAlign: 'center', widthGrow: 15, minWidth: 110, select: technologies },
+                { title: 'Storage operations', field: 'Operation', hozAlign: 'center', widthGrow: 10, minWidth: 95, select: operations },
+                {
+                    titleHtml: '<span id="osy-addStg" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add storage</span>',
+                    headerClick: event => {
+                        if (onAdd && event.target.closest('#osy-addStg')) onAdd();
+                    },
+                    widthGrow: 10,
+                    minWidth: 85,
+                    action: {
+                        html: '<span class="osy-datagrid-action deleteStg"><i class="fa fa-times danger"></i> Delete</span>',
+                        onClick: storage => {
+                            if (onDelete) onDelete(storage);
+                        }
                     }
                 }
-            }
-        }.bind(this);
-
-        var cellsrendererbutton = function (row, column, value) {
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteConstraint" data-id=' + row + ' ><i class="fa fa-times danger"></i>Delete</span>';
-        }
-
-        var cellsrendererTechs = function (row, columnfield, value, defaulthtml, columnproperties) {
-            let valueNames = [];
-
-            if (Array.isArray(value)) {
-                var values = value;
-            } else {
-                var values = value.split(/,\s*/);
-            }
-
-            $.each(values, function (id, techId) {
-                valueNames.push(techNames[techId])
-            });
-
-            return `<div class='jqx-grid-cell-middle-align'  style="margin-top: 8.5px;">${valueNames} </div>`;
-
-        }.bind(this);
-
-        $("#osy-gridConstraint").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            filterable:true,
-            theme: this.theme(),
-            source: this.daConstraint,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:true,
-            showsortcolumnbackground: false,
-            autoshowcolumnsmenubutton: false,
-            columns: [
-                { text: 'ConId', datafield: 'ConId', hidden: true },
-                { text: 'Constraint name', datafield: 'Con', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Description', datafield: 'Desc', width: '40%', align: 'center', cellsalign: 'left',sortable: false, menu:false },
-                { text: 'Tag', datafield: 'Tag', displayfield: 'TagName', width: '10%', columntype: 'dropdownlist', createeditor: ddlTags, align: 'center', cellsalign: 'center', sortable: false, menu:false },
-                { text: 'Technology', datafield: 'CM', width: '20%', columntype: 'dropdownlist', cellsrenderer: cellsrendererTechs, createeditor: ddlTechs, align: 'center', cellsalign: 'center', initeditor: initeditor, geteditorvalue: getEditorValue, sortable: false, menu:false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addConstraint" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add constraint</span>', datafield: 'Delete', width: '10%', editable: false, cellsrenderer: cellsrendererbutton, sortable: false, menu:false },
-            ]
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
         });
+        return this.stgGridInstance;
     }
 
-    
-    static indicatorGrid(techs, comms, indicators, indicatorTypes, techNames, commNames) {
+    // Scenarios on the shared grid: the base scenario is the first row and cannot be deleted.
+    static scenarioGrid(scenarios, {onChange = null, onAdd = null, onDelete = null} = {}) {
+        let uniqueName = (value, scenario) => scenarios.some(other => other !== scenario && String(other.Scenario).trim() == value)
+            ? 'Scenario name should be unique!' : null;
 
-        // console.log('indicators ',indicators)
-        console.log('comms ',comms)
-
-        this.srcTechs = JqxSources.srcTech(techs);
-        this.srcComms = JqxSources.srcComm(comms);
-        this.srcType = JqxSources.srcIndType(indicatorTypes);
-
-        console.log('this.srcType ',this.srcType)
-
-        this.daTech = new $.jqx.dataAdapter(this.srcTechs, {
-            autoBind: true
-        });
-
-        this.daComm = new $.jqx.dataAdapter(this.srcComms, {
-            autoBind: true
-        });
-
-        this.daType = new $.jqx.dataAdapter(this.srcType, {
-            autoBind: true
-        });
-
-        this.srcIndicator = JqxSources.srcIndicators(indicators, indicatorTypes);
-        this.daIndicator = new $.jqx.dataAdapter(this.srcIndicator);
-
-        var ddlTechs = function (row, value, editor) {
-            let data = techs;
-            editor.jqxDropDownList({
-                source: this.daTech, displayMember: 'Tech', valueMember: 'TechId', checkboxes: true,theme: this.themeMaterial,filterHeight:30,
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    return tooltipContent
-                }
-                , filterable: true 
-            }).bind(this);
-        }.bind(this);
-
-        var ddlComms = function (row, value, editor) {
-            let data = comms;
-            editor.jqxDropDownList({
-                source: this.daComm, displayMember: 'Comm', valueMember: 'CommId', checkboxes: true,theme: this.themeMaterial,filterHeight:30,
-                renderer: function (index, label, value) {
-                    let tootltipValue = label;
-                    let tooltipContent = `<div data-toggle="tooltip" data-placement="top" title="${data[index]['Desc']}">${tootltipValue}</div>`;
-                    return tooltipContent
-                }
-                , filterable: true 
-            }).bind(this);
-        }.bind(this);
-
-        var ddlType = function (row, value, editor) {
-            editor.jqxDropDownList({ source: this.daType, displayMember: 'value', valueMember: 'id',theme: this.themeMaterial });
-        }.bind(this);
-
-        // var getTypeEditorValue = function (row, cellvalue, editor) {
-        //     var selectedItem = editor.jqxDropDownList('getSelectedItem');
-        //     console.log('getTypeEditorValue - selectedItem:', selectedItem);
-            
-        //     if (selectedItem) {
-        //         // Vraćamo samo ID vrednost, display će se rešavati preko cellsrenderer
-        //         return selectedItem.value;  // ovo je ID iz valueMember
-        //     }
-            
-        //     return cellvalue || '';
-        // }
-
-        // Dodajem cellsrenderer funkciju za Type kolonu
-        // var cellsrendererType = function (row, columnfield, value, defaulthtml, columnproperties) {
-        //     // Pronađi display tekst na osnovu ID vrednosti
-        //     let displayText = '';
-        //     console.log('cellsrendererType - value:', value, indicatorTypes);
-        //     if (value && indicatorTypes) {
-        //         const foundType = indicatorTypes.find(type => type.value === value);
-        //         displayText = foundType ? foundType.value : value;
-        //     }
-        //     return `<div class='jqx-grid-cell-middle-align' style="margin-top: 8.5px;">${displayText}</div>`;
-        // }.bind(this);
-
-        // console.log('this.daType ',this.daType)
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridIndicator').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridIndicator').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Indicator.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Indicator name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var getEditorValue = function (row, cellvalue, editor) {
-            // let tootltipValue =cellvalue;
-            // let tooltipContent = "<div>" + tootltipValue + "</div>";
-            // editor.jqxTooltip({ content: tooltipContent });
-            // editor.jqxTooltip('open', 15, 15);
-            return editor.val();
-        }
-
-        var initeditor = function (row, cellvalue, editor, celltext, pressedkey) {
-            // set the editor's current value. The callback is called each time the editor is displayed.
-            var items = editor.jqxDropDownList('getItems');
-            editor.jqxDropDownList('uncheckAll');
-
-            console.log('initeditor - cellvalue:', cellvalue);  
-            if (cellvalue === undefined || cellvalue === null) { return; }
-            var values = [];
-
-            if (Array.isArray(cellvalue)) {
-                console.log('array')
-                values = cellvalue;
-            } else {
-                values = cellvalue.split(/,\s*/);
-            }
-
-            for (var j = 0; j < values.length; j++) {
-                for (var i = 0; i < items.length; i++) {
-                    //if (items[i].label === values[j]) {
-                    if (items[i].value === values[j]) {
-                        editor.jqxDropDownList('checkIndex', i);
+        if (this.scenarioGridInstance) this.scenarioGridInstance.destroy();
+        this.scenarioGridInstance = new DataGrid('#osy-gridScenario', {
+            rows: scenarios,
+            key: scenario => scenario.ScenarioId,
+            rangeSelection: false,
+            layout: 'fitColumns',
+            height: 'auto',
+            columns: [
+                { title: 'Scenario name', field: 'Scenario', sortable: true, menu: true, widthGrow: 20, minWidth: 120, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', widthGrow: 70, minWidth: 200, text: {} },
+                {
+                    titleHtml: '<span id="osy-addScenario" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add scenario</span>',
+                    headerClick: event => {
+                        if (onAdd && event.target.closest('#osy-addScenario')) onAdd();
+                    },
+                    widthGrow: 10,
+                    minWidth: 85,
+                    action: {
+                        html: '<span class="osy-datagrid-action deleteScenario"><i class="fa fa-times danger"></i> Delete</span>',
+                        visible: scenario => scenarios.indexOf(scenario) !== 0,
+                        onClick: scenario => {
+                            if (onDelete) onDelete(scenario);
+                        }
                     }
                 }
-            }
-        }.bind(this);
-
-        var cellsrendererbutton = function (row, column, value) {
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteIndicator" data-id=' + row + ' ><i class="fa fa-times danger"></i>Delete</span>';
-        }
-
-        var cellsrendererTechs = function (row, columnfield, value, defaulthtml, columnproperties) {
-            let valueNames = [];
-            if (Array.isArray(value)) {
-                var values = value;
-            } else {
-                var values = value.split(/,\s*/);
-            }
-            $.each(values, function (id, techId) {
-                valueNames.push(techNames[techId])
-            });
-            return `<div class='jqx-grid-cell-middle-align'  style="margin-top: 8.5px;">${valueNames} </div>`;
-        }.bind(this);
-
-        var cellsrendererComms = function (row, columnfield, value, defaulthtml, columnproperties) {
-            let valueNames = [];
-            if (Array.isArray(value)) {
-                var values = value;
-            } else {
-                var values = value.split(/,\s*/);
-            }
-            $.each(values, function (id, commId) {
-                valueNames.push(commNames[commId])
-            });
-            return `<div class='jqx-grid-cell-middle-align'  style="margin-top: 8.5px;">${valueNames} </div>`;
-        }.bind(this);
-
-        $("#osy-gridIndicator").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            filterable:true,
-            theme: this.theme(),
-            source: this.daIndicator,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:true,
-            showsortcolumnbackground: false,
-            autoshowcolumnsmenubutton: false,
-            columns: [
-                { text: 'IndicatorId', datafield: 'IndicatorId', hidden: true },
-                { text: 'Indicator name', datafield: 'Indicator', width: '15%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Description', datafield: 'Desc', width: '20%', align: 'center', cellsalign: 'left',sortable: false, menu:false },
-                { text: 'Type', datafield: 'IndicatorTypeId', displayfield: 'TypeName', width: '20%', columntype: 'dropdownlist', createeditor: ddlType, align: 'center', cellsalign: 'center', sortable: false, menu:false },
-                { text: 'Technologies', datafield: 'Techs', width: '35%', columntype: 'dropdownlist', cellsrenderer: cellsrendererTechs, createeditor: ddlTechs, align: 'center', cellsalign: 'center', initeditor: initeditor, geteditorvalue: getEditorValue, sortable: false, menu:false },
-                { text: 'Commodities', datafield: 'Comms', width: '20%', columntype: 'dropdownlist', cellsrenderer: cellsrendererComms, createeditor: ddlComms, align: 'center', cellsalign: 'center', initeditor: initeditor, geteditorvalue: getEditorValue, sortable: false, menu:false, hidden: true },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addIndicator" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add indicator</span>', datafield: 'Delete', width: '10%', editable: false, cellsrenderer: cellsrendererbutton, sortable: false, menu:false },
-            ]
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
         });
+        return this.scenarioGridInstance;
+    }
+
+    // Constraints on the shared grid: Tag is stored as a number and Technology holds a list of TechIds.
+    static constraintGrid(techs, constraints, techNames, {onChange = null, onAdd = null, onDelete = null} = {}) {
+        let uniqueName = (value, constraint) => constraints.some(other => other !== constraint && String(other.Con).trim() == value)
+            ? 'Constraint name should be unique!' : null;
+        let tagNames = {};
+        $.each(TAGS, function (index, tag) { tagNames[tag.id] = tag.name; });
+        let tags = {
+            numeric: true,
+            options: () => TAGS.map(tag => ({ value: tag.id, text: tag.name })),
+            label: id => tagNames[id] || ''
+        };
+        let technologies = {
+            options: () => techs.map(tech => ({ value: tech.TechId, text: tech.Tech, title: tech.Desc })),
+            label: ids => (ids || []).map(id => techNames[id] || id).join(', ')
+        };
+
+        if (this.constraintGridInstance) this.constraintGridInstance.destroy();
+        this.constraintGridInstance = new DataGrid('#osy-gridConstraint', {
+            rows: constraints,
+            key: constraint => constraint.ConId,
+            rangeSelection: false,
+            layout: 'fitColumns',
+            height: 'auto',
+            columns: [
+                { title: 'Constraint name', field: 'Con', sortable: true, menu: true, widthGrow: 20, minWidth: 120, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', widthGrow: 40, minWidth: 150, text: {} },
+                { title: 'Tag', field: 'Tag', hozAlign: 'center', widthGrow: 10, minWidth: 90, select: tags },
+                { title: 'Technology', field: 'CM', hozAlign: 'center', widthGrow: 20, minWidth: 110, multi: technologies },
+                {
+                    titleHtml: '<span id="osy-addConstraint" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add constraint</span>',
+                    headerClick: event => {
+                        if (onAdd && event.target.closest('#osy-addConstraint')) onAdd();
+                    },
+                    widthGrow: 10,
+                    minWidth: 95,
+                    action: {
+                        html: '<span class="osy-datagrid-action deleteConstraint"><i class="fa fa-times danger"></i> Delete</span>',
+                        onClick: constraint => {
+                            if (onDelete) onDelete(constraint);
+                        }
+                    }
+                }
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
+        });
+        return this.constraintGridInstance;
+    }
+
+    // Indicators on the shared grid: the commodities column stays hidden, as it was under jqxGrid.
+    static indicatorGrid(techs, comms, indicators, indicatorTypes, techNames, commNames, {onChange = null, onAdd = null, onDelete = null} = {}) {
+        let uniqueName = (value, indicator) => indicators.some(other => other !== indicator && String(other.Indicator).trim() == value)
+            ? 'Indicator name should be unique!' : null;
+        let typeNames = {};
+        $.each(indicatorTypes, function (index, type) { typeNames[type.id] = type.value; });
+        let names = lookup => ids => (ids || []).map(id => lookup[id] || id).join(', ');
+
+        if (this.indicatorGridInstance) this.indicatorGridInstance.destroy();
+        this.indicatorGridInstance = new DataGrid('#osy-gridIndicator', {
+            rows: indicators,
+            key: indicator => indicator.IndicatorId,
+            rangeSelection: false,
+            layout: 'fitColumns',
+            height: 'auto',
+            columns: [
+                { title: 'Indicator name', field: 'Indicator', sortable: true, menu: true, widthGrow: 15, minWidth: 120, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', widthGrow: 20, minWidth: 130, text: {} },
+                {
+                    title: 'Type', field: 'IndicatorTypeId', hozAlign: 'center', widthGrow: 20, minWidth: 110,
+                    select: { options: () => indicatorTypes.map(type => ({ value: type.id, text: type.value })), label: id => typeNames[id] || id || '' }
+                },
+                {
+                    title: 'Technologies', field: 'Techs', hozAlign: 'center', widthGrow: 35, minWidth: 130,
+                    multi: { options: () => techs.map(tech => ({ value: tech.TechId, text: tech.Tech, title: tech.Desc })), label: names(techNames) }
+                },
+                {
+                    title: 'Commodities', field: 'Comms', hozAlign: 'center', visible: false, widthGrow: 20, minWidth: 110,
+                    multi: { options: () => comms.map(comm => ({ value: comm.CommId, text: comm.Comm, title: comm.Desc })), label: names(commNames) }
+                },
+                {
+                    titleHtml: '<span id="osy-addIndicator" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add indicator</span>',
+                    headerClick: event => {
+                        if (onAdd && event.target.closest('#osy-addIndicator')) onAdd();
+                    },
+                    widthGrow: 10,
+                    minWidth: 95,
+                    action: {
+                        html: '<span class="osy-datagrid-action deleteIndicator"><i class="fa fa-times danger"></i> Delete</span>',
+                        onClick: indicator => {
+                            if (onDelete) onDelete(indicator);
+                        }
+                    }
+                }
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
+        });
+        return this.indicatorGridInstance;
     }
 
     static Grid($div, daGrid, columns, {groupable = false, filterable = false, clipboard = true, editable=true, pageable=false, sortable= false, autoshowfiltericon=true, autoheight= false, height = $(window).height() - 205}={}) {

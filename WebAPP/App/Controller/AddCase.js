@@ -261,6 +261,166 @@ export default class AddCase {
         Grid.techGrid.refresh();
     }
 
+    // Seasons, day types and daily time brackets differ only in their names and fields.
+    static TIME_SETS = {
+        season: { label: 'season', rows: 'seasons', names: 'seNames', count: 'seCount', idField: 'SeId', nameField: 'Se',
+            sliceField: 'SE', sliceDefault: 'SE_0', create: model => DefaultObj.defaultSe(false, model.seCount), grid: () => Grid.seGridInstance },
+        dayType: { label: 'day type', rows: 'daytypes', names: 'dtNames', count: 'dtCount', idField: 'DtId', nameField: 'Dt',
+            sliceField: 'DT', sliceDefault: 'DT_0', create: model => DefaultObj.defaultDt(false, model.dtCount), grid: () => Grid.dtGridInstance },
+        bracket: { label: 'daily time bracket', rows: 'dailytimebrackets', names: 'dtbNames', count: 'dtbCount', idField: 'DtbId', nameField: 'Dtb',
+            sliceField: 'DTB', sliceDefault: 'DTB_0', create: model => DefaultObj.defaultDtb(false, model.dtbCount), grid: () => Grid.dtbGridInstance }
+    };
+
+    static addTimeSet(model, kind) {
+        let set = AddCase.TIME_SETS[kind];
+        let row = JSON.parse(JSON.stringify(set.create(model)[0], [set.idField, set.nameField, 'Desc']));
+        model[set.rows].push(row);
+        model[set.names][row[set.idField]] = row[set.nameField];
+        set.grid().addRow(row, false);
+        model[set.count]++;
+        $("#" + set.count).text(model[set.count]);
+    }
+
+    // Removes the last row, as the counter control did, and points any time slice using it back at the default.
+    static removeLastTimeSet(model, kind) {
+        let set = AddCase.TIME_SETS[kind];
+        if (model[set.count] <= 1) {
+            Message.bigBoxWarning('Warning', `You cannot delete. At least one ${set.label} is necessary.`, 3000);
+            return;
+        }
+        let row = model[set.rows][model[set.rows].length - 1];
+        let id = row[set.idField];
+        model[set.rows].pop();
+        set.grid().deleteRow(id);
+        delete model[set.names][id];
+        $.each(model.timeslices, function (index, slice) {
+            if (slice[set.sliceField] == id) slice[set.sliceField] = set.sliceDefault;
+        });
+        model[set.count]--;
+        $("#" + set.count).text(model[set.count]);
+    }
+
+    static addScenario(model) {
+        let defaultSc = DefaultObj.defaultScenario();
+        let scenario = JSON.parse(JSON.stringify(defaultSc[0], ['ScenarioId', 'Scenario', 'Desc', 'Active']));
+        model.scenarios.push(scenario);
+        model.caserunByScenario[scenario.ScenarioId] = [];
+        Grid.scenarioGridInstance.addRow(scenario, false);
+        model.scenariosCount++;
+        $("#scenariosCount").text(model.scenariosCount);
+    }
+
+    // A scenario used by a case run stays; otherwise its runs are cleared on the server first.
+    static deleteScenario(model, scenarioId) {
+        let index = model.scenarios.findIndex(obj => obj.ScenarioId == scenarioId);
+        if (index <= 0) return;
+        if (model.caserunByScenario[scenarioId] && model.caserunByScenario[scenarioId].length != 0) {
+            Message.bigBoxDanger('Alert',
+                `You cannot delete this scenario. It is used in ${model.caserunByScenario[scenarioId]}  caserun(s)!
+                Please remove these scenario from caseruns before deletion.`, null);
+            return;
+        }
+        Osemosys.deleteScenarioCaseRuns(model.casename, scenarioId)
+            .then(response => {
+                model.scenarios.splice(index, 1);
+                Grid.scenarioGridInstance.deleteRow(scenarioId);
+                model.scenariosCount--;
+                $("#scenariosCount").text(model.scenariosCount);
+                Message.smallBoxInfo(response.message);
+            })
+            .catch(error => {
+                Message.bigBoxDanger(error);
+            });
+    }
+
+    static timesliceChanged(model, slice, field, value) {
+        if (field == 'Ts') {
+            model.tsNames[slice.TsId] = value;
+        }
+    }
+
+    static addTimeslice(model) {
+        let defaultTs = DefaultObj.defaultTs();
+        let slice = JSON.parse(JSON.stringify(defaultTs[0], ['TsId', 'Ts', 'Desc', 'SE', 'DT', 'DTB']));
+        model.timeslices.push(slice);
+        model.tsNames[slice.TsId] = slice.Ts;
+        Grid.tsGridInstance.addRow(slice, false);
+        model.tsCount++;
+        $("#tsCount").text(model.tsCount);
+    }
+
+    static deleteTimeslice(model, tsId) {
+        let index = model.timeslices.findIndex(obj => obj.TsId == tsId);
+        if (index <= 0) return;
+        model.timeslices.splice(index, 1);
+        Grid.tsGridInstance.deleteRow(tsId);
+        delete model.tsNames[tsId];
+        model.tsCount--;
+        $("#tsCount").text(model.tsCount);
+    }
+
+    static storageChanged(model, storage, field, value) {
+        if (field == 'Stg') {
+            model.stgNames[storage.StgId] = value;
+        }
+    }
+
+    static addStorage(model) {
+        let defaultStg = DefaultObj.defaultStg();
+        let storage = JSON.parse(JSON.stringify(defaultStg[0], ['StgId', 'Stg', 'Desc', 'UnitId', 'TTS', 'TFS', 'Operation']));
+        model.stg.push(storage);
+        model.stgNames[storage.StgId] = storage.Stg;
+        Grid.stgGridInstance.addRow(storage, false);
+        model.stgCount++;
+        $("#stgCount").text(model.stgCount);
+    }
+
+    static deleteStorage(model, stgId) {
+        let index = model.stg.findIndex(obj => obj.StgId == stgId);
+        if (index < 0) return;
+        model.stg.splice(index, 1);
+        Grid.stgGridInstance.deleteRow(stgId);
+        delete model.stgNames[stgId];
+        model.stgCount--;
+        $("#stgCount").text(model.stgCount);
+    }
+
+    static addConstraint(model) {
+        let defaultConstraint = DefaultObj.defaultConstraint();
+        let constraint = JSON.parse(JSON.stringify(defaultConstraint[0], ['ConId', 'Con', 'Desc', 'Tag', 'CM']));
+        model.constraints.push(constraint);
+        Grid.constraintGridInstance.addRow(constraint, false);
+        model.constraintsCount++;
+        $("#constraintsCount").text(model.constraintsCount);
+    }
+
+    static deleteConstraint(model, conId) {
+        let index = model.constraints.findIndex(obj => obj.ConId == conId);
+        if (index < 0) return;
+        model.constraints.splice(index, 1);
+        Grid.constraintGridInstance.deleteRow(conId);
+        model.constraintsCount--;
+        $("#constraintsCount").text(model.constraintsCount);
+    }
+
+    static addIndicator(model) {
+        let defaultIndicator = DefaultObj.defaultIndicator();
+        let indicator = JSON.parse(JSON.stringify(defaultIndicator[0], ['IndicatorId', 'Indicator', 'Desc', 'IndicatorTypeId', 'Techs', 'Comms']));
+        model.indicators.push(indicator);
+        Grid.indicatorGridInstance.addRow(indicator, false);
+        model.indicatorsCount++;
+        $("#indicatorsCount").text(model.indicatorsCount);
+    }
+
+    static deleteIndicator(model, indicatorId) {
+        let index = model.indicators.findIndex(obj => obj.IndicatorId == indicatorId);
+        if (index < 0) return;
+        model.indicators.splice(index, 1);
+        Grid.indicatorGridInstance.deleteRow(indicatorId);
+        model.indicatorsCount--;
+        $("#indicatorsCount").text(model.indicatorsCount);
+    }
+
     static initPage(model) {
         Message.clearMessages();
         //$('a[href="#tabComms"]').click();
@@ -269,7 +429,11 @@ export default class AddCase {
         Html.title(model.casename, model.title, "create & edit");
         Html.genData(model);
 
-        Grid.tsGrid(model.timeslices, model.seasons, model.daytypes, model.dailytimebrackets, model.seNames, model.dtNames, model.dtbNames);
+        Grid.tsGrid(model.timeslices, model.seasons, model.daytypes, model.dailytimebrackets, model.seNames, model.dtNames, model.dtbNames, {
+            onChange: (slice, field, value) => AddCase.timesliceChanged(model, slice, field, value),
+            onAdd: () => AddCase.addTimeslice(model),
+            onDelete: slice => AddCase.deleteTimeslice(model, slice.TsId)
+        });
         Grid.seGrid(model.seasons);
         Grid.dtGrid(model.daytypes);
         Grid.dtbGrid(model.dailytimebrackets);
@@ -278,7 +442,11 @@ export default class AddCase {
             onAdd: () => AddCase.addCommodity(model),
             onDelete: comm => AddCase.deleteCommodity(model, comm.CommId)
         });
-        Grid.stgGrid(model.stg, model.techs, model.techNames);
+        Grid.stgGrid(model.stg, model.techs, model.techNames, {
+            onChange: (storage, field, value) => AddCase.storageChanged(model, storage, field, value),
+            onAdd: () => AddCase.addStorage(model),
+            onDelete: storage => AddCase.deleteStorage(model, storage.StgId)
+        });
         Grid.techsGrid(model.techs, model.commodities, model.techGroups, model.emissions, model.commNames, model.emiNames, model.techGroupNames, {
             onChange: (tech, field, value) => AddCase.techChanged(model, tech, field, value),
             onAdd: () => AddCase.addTech(model),
@@ -295,10 +463,19 @@ export default class AddCase {
             onAdd: () => AddCase.addEmission(model),
             onDelete: emis => AddCase.deleteEmission(model, emis.EmisId)
         });
-        Grid.scenarioGrid(model.scenarios);
-        Grid.constraintGrid(model.techs, model.constraints, model.techNames);
+        Grid.scenarioGrid(model.scenarios, {
+            onAdd: () => AddCase.addScenario(model),
+            onDelete: scenario => AddCase.deleteScenario(model, scenario.ScenarioId)
+        });
+        Grid.constraintGrid(model.techs, model.constraints, model.techNames, {
+            onAdd: () => AddCase.addConstraint(model),
+            onDelete: constraint => AddCase.deleteConstraint(model, constraint.ConId)
+        });
 
-        Grid.indicatorGrid(model.techs, model.commodities, model.indicators, model.indicatorTypes, model.techNames, model.commNames);
+        Grid.indicatorGrid(model.techs, model.commodities, model.indicators, model.indicatorTypes, model.techNames, model.commNames, {
+            onAdd: () => AddCase.addIndicator(model),
+            onDelete: indicator => AddCase.deleteIndicator(model, indicator.IndicatorId)
+        });
 
         if (model.casename == null) {
             $('#osy-save').show();
@@ -326,14 +503,6 @@ export default class AddCase {
             update: () => $("#osy-caseForm").jqxValidator("validate")
         });
 
-        let $divStg = $("#osy-gridStg");
-        let $divTs = $("#osy-gridTs");
-        let $divSe = $("#osy-gridSe");
-        let $divDt = $("#osy-gridDt");
-        let $divDtb = $("#osy-gridDtb");
-        let $divScenario = $("#osy-gridScenario");
-        let $divConstraint = $("#osy-gridConstraint");
-        let $divIndicator = $("#osy-gridIndicator");
 
         $("#casePicker").off('click');
         $("#casePicker").on('click', '.selectCS', function (e) {
@@ -490,557 +659,64 @@ export default class AddCase {
             })
         });
 
-        //TECHNOLOGIES: add, edit and delete are handled through Grid.techsGrid callbacks (see initPage)
+        //TECHNOLOGIES: handled through Grid.techsGrid callbacks (see initPage)
 
         //TECHNOLOGY GROUPS: handled through Grid.techGroupGrid callbacks (see initPage)
 
-        //TIMESLICES GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addTs", "click");
-        $('#osy-caseForm').delegate("#osy-addTs", "click", function (event) {
-            //console.log('add timeslice')
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultTs = DefaultObj.defaultTs();
-            //console.log('defaultTs ',defaultTs)
-            model.timeslices.push(JSON.parse(JSON.stringify(defaultTs[0], ['TsId', 'Ts', 'Desc', 'SE', 'DT', 'DTB'])));
+        //TIMESLICES: handled through Grid.tsGrid callbacks (see initPage)
 
-            //update commnames
-            model.tsNames[defaultTs[0]['TsId']] = defaultTs[0]['Ts'];
-            //add row
-            $divTs.jqxGrid('addrow', null, defaultTs);
-            model.tsCount++;
-            $("#tsCount").text(model.tsCount);
-        });
-
-        $('#osy-caseForm').undelegate(".deleteTs", "click");
-        $('#osy-caseForm').delegate(".deleteTs", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            if (id != 0) {
-                var tsId = $divTs.jqxGrid('getcellvalue', id, 'TsId');
-                var rowid = $divTs.jqxGrid('getrowid', id);
-                $divTs.jqxGrid('deleterow', rowid);
-                model.timeslices.splice(id, 1);
-                //update techNames
-                delete model.tsNames[tsId];
-                //update count
-                model.tsCount--;
-                $("#tsCount").text(model.tsCount);
-            }
-        });  
-
-        $divTs.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            //console.log('arsg ', args)  
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            model.timeslices[rowBoundIndex][column] = value;
-
-            //console.log('columnd ', column)
-
-            if (column == 'Timeslice') {
-                var tsId = $divTs.jqxGrid('getcellvalue', rowBoundIndex, 'TsId');
-                model.tsNames[tsId] = value;
-            }
-        });
-
-        //SESONS GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addSe", "click");
-        $('#osy-caseForm').delegate("#osy-addSe", "click", function (event) {
-            //console.log('add season')
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultSe = DefaultObj.defaultSe(false, model.seCount);
-            //console.log('defaultSe ',defaultSe)
-            model.seasons.push(JSON.parse(JSON.stringify(defaultSe[0], ['SeId', 'Se', 'Desc'])));
-
-            //update commnames
-            model.seNames[defaultSe[0]['SeId']] = defaultSe[0]['Se'];
-            //add row
-            $divSe.jqxGrid('addrow', null, defaultSe);
-            model.seCount++;
-            $("#seCount").text(model.seCount);
-        });
-        
-        $('#osy-caseForm').undelegate(".deleteSe", "click");
-        $('#osy-caseForm').delegate(".deleteSe", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            if (id != 0) {
-                var seId = $divSe.jqxGrid('getcellvalue', id, 'SeId');
-                var rowid = $divSe.jqxGrid('getrowid', id);
-                $divSe.jqxGrid('deleterow', rowid);
-                model.seasons.splice(id, 1);
-                //update techNames
-                delete model.seNames[seId];
-                //ovdje trebamo izbaciti season iz timeslice definicije
-                //update count
-                model.seCount--;
-                $("#seCount").text(model.seCount);
-            }
-        });  
-
-        //events by number
+        //SEASONS, DAY TYPES AND DAILY TIME BRACKETS: the grids show them, the counters add and remove rows
         $('#osy-caseForm').undelegate("#osy-addSeNumber", "click");
         $('#osy-caseForm').delegate("#osy-addSeNumber", "click", function (event) {
             event.preventDefault();
             event.stopImmediatePropagation();
-            let defaultSe = DefaultObj.defaultSe(false, model.seCount);
-            model.seasons.push(JSON.parse(JSON.stringify(defaultSe[0], ['SeId', 'Se', 'Desc'])));
-            //update commnames
-            model.seNames[defaultSe[0]['SeId']] = defaultSe[0]['Se'];
-            //add row
-            $divSe.jqxGrid('addrow', null, defaultSe);
-            model.seCount++;
-            $("#seCount").text(model.seCount);
+            AddCase.addTimeSet(model, 'season');
         });
-        
+
         $('#osy-caseForm').undelegate("#deleteSeNumber", "click");
         $('#osy-caseForm').delegate("#deleteSeNumber", "click", function (e) {
             e.preventDefault();
             e.stopImmediatePropagation();
-
-            let rowId = model.seCount-1;
-            if(rowId == 0){
-                Message.bigBoxWarning('Warning', 'You cannot delete. At least one season is necessary.', 3000);
-            }else{
-                var seId = $divSe.jqxGrid('getcellvalue', rowId, 'SeId');
-                $divSe.jqxGrid('deleterow',rowId );
-                model.seasons.splice(rowId, 1);
-                //update techNames
-                delete model.seNames[seId];
-                //ovdje trebamo izbaciti season iz timeslice definicije
-                $.each(model.timeslices, function (id, obj) {
-                    if(obj.SE == seId){
-                        obj.SE='SE_0';
-                    }
-                });
-                //update count
-                model.seCount--;
-                $("#seCount").text(model.seCount);
-            }
-        }); 
-        
-        $divSe.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            model.seasons[rowBoundIndex][column] = value;
-            if (column == 'Se') {
-                var seId = $divSe.jqxGrid('getcellvalue', rowBoundIndex, 'SeId');
-                model.seNames[seId] = value;
-            }
+            AddCase.removeLastTimeSet(model, 'season');
         });
 
-        //DAY TYPE GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addDt", "click");
-        $('#osy-caseForm').delegate("#osy-addDt", "click", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultDt = DefaultObj.defaultDt(false, model.dtCount);
-            model.daytypes.push(JSON.parse(JSON.stringify(defaultDt[0], ['DtId', 'Dt', 'Desc'])));
-            //update commnames
-            model.dtNames[defaultDt[0]['DtId']] = defaultDt[0]['Dt'];
-            //add row
-            $divDt.jqxGrid('addrow', null, defaultDt);
-            model.dtCount++;
-            $("#dtCount").text(model.dtCount);
-        });
-        
-        $('#osy-caseForm').undelegate(".deleteDt", "click");
-        $('#osy-caseForm').delegate(".deleteDt", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            if (id != 0) {
-                var dtId = $divDt.jqxGrid('getcellvalue', id, 'DtId');
-                var rowid = $divDt.jqxGrid('getrowid', id);
-                $divDt.jqxGrid('deleterow', rowid);
-                model.seasons.splice(id, 1);
-                //update techNames
-                delete model.dtNames[dtId];
-                //ovdje trebamo izbaciti season iz timeslice definicije
-                //update count
-                model.dtCount--;
-                $("#dtCount").text(model.dtCount);
-            }
-        });  
-
-                //events by number
         $('#osy-caseForm').undelegate("#osy-addDtNumber", "click");
         $('#osy-caseForm').delegate("#osy-addDtNumber", "click", function (event) {
             event.preventDefault();
             event.stopImmediatePropagation();
-            let defaultDt = DefaultObj.defaultDt(false, model.dtCount);
-            model.daytypes.push(JSON.parse(JSON.stringify(defaultDt[0], ['DtId', 'Dt', 'Desc'])));
-            //update commnames
-            model.dtNames[defaultDt[0]['DtId']] = defaultDt[0]['Dt'];
-            //add row
-            $divDt.jqxGrid('addrow', null, defaultDt);
-            model.dtCount++;
-            $("#dtCount").text(model.dtCount);
+            AddCase.addTimeSet(model, 'dayType');
         });
-        
+
         $('#osy-caseForm').undelegate("#deleteDtNumber", "click");
         $('#osy-caseForm').delegate("#deleteDtNumber", "click", function (e) {
             e.preventDefault();
             e.stopImmediatePropagation();
-
-            let rowId = model.dtCount-1;
-            if(rowId == 0){
-                Message.bigBoxWarning('Warning', 'You cannot delete. At least one day type is necessary.', 3000);
-            }else{
-                var dtId = $divDt.jqxGrid('getcellvalue', rowId, 'DtId');
-                $divDt.jqxGrid('deleterow',rowId );
-                model.daytypes.splice(rowId, 1);
-                //update techNames
-                delete model.dtNames[dtId];
-                //ovdje trebamo izbaciti season iz timeslice definicije
-                $.each(model.timeslices, function (id, obj) {
-                    if(obj.DT == dtId){
-                        obj.DT='DT_0';
-                    }
-                });
-                //update count
-                model.dtCount--;
-                $("#dtCount").text(model.dtCount);
-            }
-        }); 
-        
-        $divDt.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            model.daytypes[rowBoundIndex][column] = value;
-            if (column == 'Dt') {
-                var dtId = $divDt.jqxGrid('getcellvalue', rowBoundIndex, 'DtId');
-                model.dtNames[dtId] = value;
-            }
+            AddCase.removeLastTimeSet(model, 'dayType');
         });
 
-        //DAILY TIME BRACKETS GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addDtb", "click");
-        $('#osy-caseForm').delegate("#osy-addDtb", "click", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultDtb = DefaultObj.defaultDtb(false, model.dtbCount);
-            model.dailytimebrackets.push(JSON.parse(JSON.stringify(defaultDtb[0], ['DtbId', 'Dtb', 'Desc'])));
-            //update commnames
-            model.dtbNames[defaultDtb[0]['DtbId']] = defaultDtb[0]['Dtb'];
-            //add row
-            $divDtb.jqxGrid('addrow', null, defaultDtb);
-            model.dtbCount++;
-            $("#dtbCount").text(model.dtbCount);
-        });
-        
-        $('#osy-caseForm').undelegate(".deleteDtb", "click");
-        $('#osy-caseForm').delegate(".deleteDtb", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            if (id != 0) {
-                var dtbId = $divDtb.jqxGrid('getcellvalue', id, 'DtbId');
-                var rowid = $divDtb.jqxGrid('getrowid', id);
-                $divDtb.jqxGrid('deleterow', rowid);
-                model.dailytimebrackets.splice(id, 1);
-                //update techNames
-                delete model.dtbNames[dtbId];
-                //ovdje trebamo izbaciti season iz timeslice definicije
-                //update count
-                model.dtbCount--;
-                $("#dtbCount").text(model.dtbCount);
-            }
-        });  
-
-        //events by number
         $('#osy-caseForm').undelegate("#osy-addDtbNumber", "click");
         $('#osy-caseForm').delegate("#osy-addDtbNumber", "click", function (event) {
             event.preventDefault();
             event.stopImmediatePropagation();
-            let defaultDtb = DefaultObj.defaultDtb(false, model.dtbCount);
-            model.dailytimebrackets.push(JSON.parse(JSON.stringify(defaultDtb[0], ['DtbId', 'Dtb', 'Desc'])));
-            //update commnames
-            model.dtbNames[defaultDtb[0]['DtbId']] = defaultDtb[0]['Dtb'];
-            //add row
-            $divDtb.jqxGrid('addrow', null, defaultDtb);
-            model.dtbCount++;
-            $("#dtbCount").text(model.dtbCount);
+            AddCase.addTimeSet(model, 'bracket');
         });
-        
+
         $('#osy-caseForm').undelegate("#deleteDtbNumber", "click");
         $('#osy-caseForm').delegate("#deleteDtbNumber", "click", function (e) {
             e.preventDefault();
             e.stopImmediatePropagation();
-
-            let rowId = model.dtbCount-1;
-            var dtbId = $divDtb.jqxGrid('getcellvalue', rowId, 'DtbId');
-            if(rowId == 0){
-                Message.bigBoxWarning('Warning', 'You cannot delete. At least one daily time bracket is necessary.', 3000);
-            }else{
-                $divDtb.jqxGrid('deleterow',rowId );
-                model.dailytimebrackets.splice(rowId, 1);
-                //update techNames
-                delete model.dtbNames[dtbId];
-                //ovdje trebamo izbaciti season iz timeslice definicije
-                $.each(model.timeslices, function (id, obj) {
-                    if(obj.DTB == dtbId){
-                        obj.DTB='DTB_0';
-                    }
-                });
-                //update count
-                model.dtbCount--;
-                $("#dtbCount").text(model.dtbCount);
-            }
-
-
-        }); 
-        
-        $divDtb.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            model.dailytimebrackets[rowBoundIndex][column] = value;
-            if (column == 'Dtb') {
-                var dtbId = $divDtb.jqxGrid('getcellvalue', rowBoundIndex, 'DtbId');
-                model.dtbNames[dtbId] = value;
-            }
+            AddCase.removeLastTimeSet(model, 'bracket');
         });
 
-        //COMMODITIES GRID AND EVENTS
         //COMMODITIES and EMISSIONS: handled through their grid callbacks (see initPage)
 
-        //STORAGE GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addStg", "click");
-        $('#osy-caseForm').delegate("#osy-addStg", "click", function (event) {
-            //console.log('add season')
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultStg = DefaultObj.defaultStg();
-            model.stg.push(JSON.parse(JSON.stringify(defaultStg[0], ['StgId', 'Stg', 'Desc',"UnitId", "TTS","TFS", "Operation"])));
-            //update stgames
-            model.stgNames[defaultStg[0]['StgId']] = defaultStg[0]['Stg'];
-            //add row
-            $divStg.jqxGrid('addrow', null, defaultStg);
-            model.stgCount++;
-            $("#stgCount").text(model.stgCount);
-        });
-        
-        $('#osy-caseForm').undelegate(".deleteStg", "click");
-        $('#osy-caseForm').delegate(".deleteStg", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            //if (id != 0) {
-                var stgId = $divStg.jqxGrid('getcellvalue', id, 'StgId');
-                var rowid = $divStg.jqxGrid('getrowid', id);
-                $divStg.jqxGrid('deleterow', rowid);
-                model.stg.splice(id, 1);
-                //update techNames
-                delete model.stgNames[stgId];
-                //update count
-                model.stgCount--;
-                $("#stgCount").text(model.stgCount);
-            //}
-        });  
-        
-        $divStg.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            model.stg[rowBoundIndex][column] = value;
-            if (column == 'Stg') {
-                var stgId = $divStg.jqxGrid('getcellvalue', rowBoundIndex, 'StgId');
-                model.stgNames[stgId] = value;
-            }
-        });
+        //STORAGE: handled through Grid.stgGrid callbacks (see initPage)
 
+        //SCENARIOS: handled through Grid.scenarioGrid callbacks (see initPage)
 
-        //SCENARIOS GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addScenario", "click");
-        $('#osy-caseForm').delegate("#osy-addScenario", "click", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultSc = DefaultObj.defaultScenario();
-            model.scenarios.push(JSON.parse(JSON.stringify(defaultSc[0], ['ScenarioId', 'Scenario', 'Desc', 'Active'])));
-            //add scenario id to caserunByScenario
-            model.caserunByScenario[defaultSc[0].ScenarioId] =[];
-            $divScenario.jqxGrid('addrow', null, defaultSc);
-            model.scenariosCount++;
-            $("#scenariosCount").text(model.scenariosCount);
-            $divScenario.jqxGrid('refresh');
-        });
+        //CONSTRAINTS: handled through Grid.constraintGrid callbacks (see initPage)
 
-        $('#osy-caseForm').undelegate(".deleteScenario", "click");
-        $('#osy-caseForm').delegate(".deleteScenario", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            if (id != 0) {
-                if(model.caserunByScenario[model.scenarios[id]['ScenarioId']].length != 0){
-                    Message.bigBoxDanger('Alert', 
-                        `You cannot delete this scenario. It is used in ${model.caserunByScenario[model.scenarios[id]['ScenarioId']]}  caserun(s)! 
-                        Please remove these scenario from caseruns before deletion.`, null)
-                }
-                else{
-                    let scId = model.scenarios[id]['ScenarioId'];
-                    Osemosys.deleteScenarioCaseRuns(model.casename, scId)
-                    .then(response=>{
-                        //console.log('delete ', response)
-                        var rowid = $divScenario.jqxGrid('getrowid', id);
-                        $divScenario.jqxGrid('deleterow', rowid);
-                        model.scenarios.splice(id, 1);
-                        model.scenariosCount--;
-                        $("#scenariosCount").text(model.scenariosCount);
-                        Message.smallBoxInfo(response.message)
-                    })
-                    .catch(error => {
-                        Message.bigBoxDanger(error);
-                    })
-
-                }
-            }
-        });
-
-        $divScenario.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var datafield = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            model.scenarios[rowBoundIndex][datafield] = value;
-        });
-
-        //CONSTRAINTS GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addConstraint", "click");
-        $('#osy-caseForm').delegate("#osy-addConstraint", "click", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultConstraint = DefaultObj.defaultConstraint();
-            model.constraints.push(JSON.parse(JSON.stringify(defaultConstraint[0], ['ConId', 'Con', 'Desc', 'Tag', 'CM'])));
-
-            $divConstraint.jqxGrid('addrow', null, defaultConstraint);
-            $divConstraint.jqxGrid('updatebounddata', 'data');
-            model.constraintsCount++;
-            $("#constraintsCount").text(model.constraintsCount);
-            //$divConstraint.jqxGrid('refresh');
-        });
-
-        $('#osy-caseForm').undelegate(".deleteConstraint", "click");
-        $('#osy-caseForm').delegate(".deleteConstraint", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            //no condition needed, we can delete all constraints
-            //if(id!=0){
-            var conId = $divConstraint.jqxGrid('getcellvalue', id, 'ConId');
-            var rowid = $divConstraint.jqxGrid('getrowid', id);
-            $divConstraint.jqxGrid('deleterow', rowid);
-            model.constraints.splice(id, 1);
-            //smanji counter za broj emisjia i update html
-            model.constraintsCount--;
-            $("#constraintsCount").text(model.constraintsCount);
-
-            //izbirsati iz modela za tech nz EAR za izbrisanu emisiju ako je slucajno odabrana za neku tehnologiju
-            // $.each(model.techs, function (id, techObj) {
-            //     techObj['EAR'] =  techObj['EAR'].filter(item => item !== emisId);
-            //     model.techs[id]['EAR'] = techObj['EAR'];
-            // });
-            //}
-        });
-
-        $divConstraint.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            //console.log('newvalue ', args.newvalue)
-            if(typeof args.newvalue !== 'object'){
-                var value = args.newvalue.trim();
-            }else{
-                var value = args.newvalue;
-            }
-            
-
-            if (column != 'CM' && column != 'Tag') {
-                model.constraints[rowBoundIndex][column] = value;
-            } else if (column == 'CM') {
-                if (value.includes(',') && value) {
-                    var array = value.split(',');
-                } else if (value) {
-                    var array = [];
-                    array.push(value);
-                } else {
-                    var array = [];
-                }
-                model.constraints[rowBoundIndex][column] = array;
-            } else if (column == 'Tag') {
-                //console.log('eqyuality ', value)
-                model.constraints[rowBoundIndex][column] = value.value;
-            }
-        });
-
-        //INDICATORS GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addIndicator", "click");
-        $('#osy-caseForm').delegate("#osy-addIndicator", "click", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultIndicator = DefaultObj.defaultIndicator();
-            model.indicators.push(JSON.parse(JSON.stringify(defaultIndicator[0], ['IndicatorId', 'Indicator', 'Desc', 'IndicatorTypeId', 'Techs', 'Comms'])));
-
-            $divIndicator.jqxGrid('addrow', null, defaultIndicator);
-            $divIndicator.jqxGrid('updatebounddata', 'data');
-            model.indicatorsCount++;
-            $("#indicatorsCount").text(model.indicatorsCount);
-            //$divConstraint.jqxGrid('refresh');
-        });
-
-        $('#osy-caseForm').undelegate(".deleteIndicator", "click");
-        $('#osy-caseForm').delegate(".deleteIndicator", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            //no condition needed, we can delete all constraints
-            //if(id!=0){
-            //var conId = $divIndicator.jqxGrid('getcellvalue', id, 'IndicatorId');
-            var rowid = $divIndicator.jqxGrid('getrowid', id);
-            $divIndicator.jqxGrid('deleterow', rowid);
-            model.indicators.splice(id, 1);
-            //smanji counter za broj emisjia i update html
-            model.indicatorsCount--;
-            $("#indicatorsCount").text(model.indicatorsCount);
-
-        });
-
-        $divIndicator.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            if(typeof args.newvalue !== 'object'){
-                var value = args.newvalue.trim();
-            }else{
-                var value = args.newvalue;
-            }
-            if (column != 'Techs' && column != 'Comms' && column != 'IndicatorTypeId') {
-                model.indicators[rowBoundIndex][column] = value;
-            } else if (column == 'Techs' || column == 'Comms') {
-                if (value.includes(',') && value) {
-                    var array = value.split(',');
-                } else if (value) {
-                    var array = [];
-                    array.push(value);
-                } else {
-                    var array = [];
-                }
-                model.indicators[rowBoundIndex][column] = array;
-            } else if (column == 'IndicatorTypeId') {
-                model.indicators[rowBoundIndex][column] = value;
-            }
-        });
+        //INDICATORS: handled through Grid.indicatorGrid callbacks (see initPage)
 
         //TABS CHANGE EVENT
         $(".nav-tabs li a").off('click');
@@ -1050,21 +726,6 @@ export default class AddCase {
             //update tech grid to update IAR OAR EAR with new added or removed comms and emis
             // Redraw once the pane is shown: a grid measured while hidden has no header height or widths.
             $(this).one('shown.bs.tab', () => DataGrid.refreshVisible());
-            if (id == 'Constraints') {
-                $("#osy-gridConstraint" ).ready(function() {
-                    $divConstraint.jqxGrid('updatebounddata');
-                });
-            }
-            else if (id == 'Ts') {
-                $("#osy-gridTs" ).ready(function() {
-                    $divTs.jqxGrid('updatebounddata');
-                });
-            }
-            else if (id == 'Storage') {
-                $("#osy-gridStg" ).ready(function() {
-                    $divStg.jqxGrid('updatebounddata');
-                });
-            }
         });
 
         //YEARS EVENTS
