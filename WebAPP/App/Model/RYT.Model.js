@@ -31,13 +31,14 @@ export class Model {
             // The base scenario always needs a value; an empty override falls back to the scenario below it.
             let nullable = row => row.ScId !== 'SC_0';
 
+            // Columns share the width so the grid fills the page, scrolling only once the years hit their minimum.
             let columns = [
-                { title: 'Scenario', field: 'Sc', frozen: true, sortable: true, tooltipField: 'ScDesc' },
-                { title: 'Technology', field: 'Tech', frozen: true, sortable: true, menu: true, tooltipField: 'TechDesc' },
-                { title: 'Unit', field: 'UnitId', frozen: true, hozAlign: 'center', html: true }
+                { title: 'Scenario', field: 'Sc', frozen: true, sortable: true, widthGrow: 1.2, minWidth: 70, tooltipField: 'ScDesc' },
+                { title: 'Technology', field: 'Tech', frozen: true, sortable: true, menu: true, widthGrow: 1.6, minWidth: 90, tooltipField: 'TechDesc' },
+                { title: 'Unit', field: 'UnitId', frozen: true, hozAlign: 'center', widthGrow: 0.8, minWidth: 55, html: true }
             ];
             $.each(years, function (id, year) {
-                columns.push({ title: year, field: year, minWidth: 55, number: { nullable: nullable, validate: validate } });
+                columns.push({ title: year, field: year, widthGrow: 1, minWidth: 55, number: { nullable: nullable, validate: validate } });
             });
 
             this.casename = casename;

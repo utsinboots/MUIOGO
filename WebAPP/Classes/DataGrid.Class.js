@@ -5,7 +5,7 @@ import { MultiSelect } from "./MultiSelect.Class.js";
 // own rows by key, so sorting or filtering never changes which record an edit lands on.
 export class DataGrid {
 
-    // options: rows, columns, key(row), decimals, rangeSelection, rowClass(row), onChange(row, field, value), onInvalid(message)
+    // options: rows, columns, key(row), decimals, layout, rangeSelection, rowClass(row), onChange(row, field, value), onInvalid(message)
     constructor(selector, options) {
         if (!window.Tabulator) throw new Error('The grid could not be loaded.');
         this.element = document.querySelector(selector);
@@ -18,13 +18,14 @@ export class DataGrid {
         this.columnFilterState = new Map();
         this.rowFilter = null;
         this.syncing = false;
-        this.resizeFrame = null;
+        this.resizeTimer = null;
+        // Debounced on a timer rather than an animation frame, which a hidden tab never runs.
         this.onResize = () => {
-            if (this.resizeFrame) return;
-            this.resizeFrame = requestAnimationFrame(() => {
-                this.resizeFrame = null;
+            if (this.resizeTimer) clearTimeout(this.resizeTimer);
+            this.resizeTimer = setTimeout(() => {
+                this.resizeTimer = null;
                 this.fitHeight();
-            });
+            }, 120);
         };
 
         const settings = {
@@ -32,7 +33,8 @@ export class DataGrid {
             index: '_key',
             columns: options.columns.map(spec => this.column(spec)),
             height: this.availableHeight(),
-            layout: 'fitData',
+            // fitColumns shares the width out as jqxGrid's percentage columns did, so narrow windows do not scroll.
+            layout: options.layout || 'fitData',
             movableColumns: false,
             editTriggerEvent: 'dblclick',
             // Like jqxGrid, an invalid value keeps the editor open instead of being stored.
@@ -74,6 +76,11 @@ export class DataGrid {
             if (editor) this.warn(editor.problem(editor.parse(value), this.source(cell.getRow())));
         });
         window.addEventListener('resize', this.onResize);
+        // Also refit when only the container changes, e.g. the sidebar collapsing.
+        if (window.ResizeObserver) {
+            this.resizeObserver = new ResizeObserver(this.onResize);
+            this.resizeObserver.observe(this.element);
+        }
     }
 
     // Map a MUIOGO column spec to a Tabulator column.
@@ -87,6 +94,8 @@ export class DataGrid {
             headerHozAlign: 'center',
             minWidth: spec.minWidth || 60
         };
+        // Share of the width under the fitColumns layout, standing in for jqxGrid's column percentages.
+        if (spec.widthGrow) column.widthGrow = spec.widthGrow;
         if (spec.headerClick) column.headerClick = spec.headerClick;
         if (spec.tooltipField) {
             column.tooltip = (event, cell) => DataGrid.tooltip(cell.getData()[spec.tooltipField]);
@@ -401,7 +410,7 @@ export class DataGrid {
                 this.columnFilters.set(field, row => DataGrid.matchesFilter(row[field], next));
                 this.applyFilters();
             }
-            DataGrid.closePopups();
+            DataGrid.closePopup(menu);
         });
         return menu;
     }
@@ -433,18 +442,27 @@ export class DataGrid {
         return Math.max(300, Math.floor(window.innerHeight - top - 30));
     }
 
+    // Refit height and column widths on a real size change only: a redraw cancels an open editor.
     fitHeight() {
         if (!document.body.contains(this.element)) {
             this.destroy();
             return;
         }
-        if (this.table) this.table.setHeight(this.availableHeight());
+        if (!this.table || this.element.querySelector('.tabulator-editing')) return;
+        const width = this.element.clientWidth;
+        const height = window.innerHeight;
+        if (this.lastSize && this.lastSize.width === width && this.lastSize.height === height) return;
+        this.lastSize = { width, height };
+        this.table.setHeight(this.availableHeight());
+        this.table.redraw();
     }
 
     destroy() {
         window.removeEventListener('resize', this.onResize);
-        if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
-        this.resizeFrame = null;
+        if (this.resizeObserver) this.resizeObserver.disconnect();
+        this.resizeObserver = null;
+        if (this.resizeTimer) clearTimeout(this.resizeTimer);
+        this.resizeTimer = null;
         if (this.table) this.table.destroy();
         this.table = null;
     }
@@ -540,9 +558,11 @@ export class DataGrid {
         return true;
     }
 
-    // Tabulator hides an open popup on a document mousedown, which is how a menu command closes it.
-    static closePopups() {
+    // A menu command closes its popup: Tabulator hides on a document mousedown, then the container is removed.
+    static closePopup(menu) {
         document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        const popup = menu.closest('.tabulator-popup');
+        if (popup) popup.remove();
     }
 
     static tooltip(text) {

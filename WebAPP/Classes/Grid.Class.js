@@ -365,22 +365,26 @@ export class Grid {
             rows: techs,
             key: tech => tech.TechId,
             rangeSelection: false,
+            // Columns share the width in the proportions jqxGrid gave them, so the grid fits any window.
+            layout: 'fitColumns',
             columns: [
-                { title: 'Technology', field: 'Tech', sortable: true, menu: true, minWidth: 120, text: { validate: uniqueName } },
-                { title: 'Description', field: 'Desc', minWidth: 180, text: {} },
-                { title: 'Technology group', field: 'TG', hozAlign: 'center', minWidth: 110, multi: { options: choices(techGroups, 'TechGroupId', 'TechGroup'), label: labels(techGroupNames) } },
-                { title: 'Unit of capacity', field: 'CapUnitId', hozAlign: 'center', minWidth: 90, select: units },
-                { title: 'Unit of activity', field: 'ActUnitId', hozAlign: 'center', minWidth: 90, select: units },
-                { title: 'Input Activity Ratio', field: 'IAR', hozAlign: 'center', minWidth: 110, multi: comms },
-                { title: 'Output Activity Ratio', field: 'OAR', hozAlign: 'center', minWidth: 110, multi: comms },
-                { title: 'Input To New Capacity Ratio', field: 'INCR', hozAlign: 'center', minWidth: 110, multi: comms },
-                { title: 'Input To Total Capacity Ratio', field: 'ITCR', hozAlign: 'center', minWidth: 110, multi: comms },
-                { title: 'Emission Activity Ratio', field: 'EAR', hozAlign: 'center', minWidth: 110, multi: { options: choices(emissions, 'EmisId', 'Emis'), label: labels(emiNames) } },
+                { title: 'Technology', field: 'Tech', sortable: true, menu: true, widthGrow: 8, minWidth: 95, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', widthGrow: 15, minWidth: 110, text: {} },
+                { title: 'Technology group', field: 'TG', hozAlign: 'center', widthGrow: 7, minWidth: 80, multi: { options: choices(techGroups, 'TechGroupId', 'TechGroup'), label: labels(techGroupNames) } },
+                { title: 'Unit of capacity', field: 'CapUnitId', hozAlign: 'center', widthGrow: 7, minWidth: 70, select: units },
+                { title: 'Unit of activity', field: 'ActUnitId', hozAlign: 'center', widthGrow: 7, minWidth: 70, select: units },
+                { title: 'Input Activity Ratio', field: 'IAR', hozAlign: 'center', widthGrow: 10, minWidth: 85, multi: comms },
+                { title: 'Output Activity Ratio', field: 'OAR', hozAlign: 'center', widthGrow: 10, minWidth: 85, multi: comms },
+                { title: 'Input To New Capacity Ratio', field: 'INCR', hozAlign: 'center', widthGrow: 9, minWidth: 85, multi: comms },
+                { title: 'Input To Total Capacity Ratio', field: 'ITCR', hozAlign: 'center', widthGrow: 9, minWidth: 85, multi: comms },
+                { title: 'Emission Activity Ratio', field: 'EAR', hozAlign: 'center', widthGrow: 9, minWidth: 85, multi: { options: choices(emissions, 'EmisId', 'Emis'), label: labels(emiNames) } },
                 {
                     titleHtml: '<span id="osy-addTech" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add technology</span>',
                     headerClick: event => {
                         if (onAdd && event.target.closest('#osy-addTech')) onAdd();
                     },
+                    widthGrow: 9,
+                    minWidth: 85,
                     action: {
                         html: '<span class="osy-datagrid-action deleteTech"><i class="fa fa-times danger"></i> Delete</span>',
                         onClick: tech => {

@@ -62,6 +62,7 @@ export default class RYT {
             rows: model.gridData[model.param],
             columns: model.columns,
             key: row => row.ScId + '|' + row.TechId,
+            layout: 'fitColumns',
             decimals: model.d,
             rowClass: model.rowClass,
             onInvalid: message => Message.smallBoxWarning('Validation', message, 3000)
