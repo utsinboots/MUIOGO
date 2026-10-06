@@ -5,7 +5,8 @@ import { MultiSelect } from "./MultiSelect.Class.js";
 // own rows by key, so sorting or filtering never changes which record an edit lands on.
 export class DataGrid {
 
-    // options: rows, columns, key(row), decimals, layout, rangeSelection, rowClass(row), onChange(row, field, value), onInvalid(message)
+    // options: rows, columns, key(row), decimals, layout, height ('auto' grows with the rows), rangeSelection,
+    //          rowClass(row), onChange(row, field, value), onInvalid(message)
     constructor(selector, options) {
         if (!window.Tabulator) throw new Error('The grid could not be loaded.');
         this.element = document.querySelector(selector);
@@ -28,11 +29,13 @@ export class DataGrid {
             }, 120);
         };
 
+        // Small grids grow with their rows, as jqxGrid's autoheight did; the rest fill the window.
+        this.autoHeight = options.height === 'auto';
         const settings = {
             data: this.tableRows(options.rows || []),
             index: '_key',
             columns: options.columns.map(spec => this.column(spec)),
-            height: this.availableHeight(),
+            height: this.autoHeight ? undefined : this.availableHeight(),
             // fitColumns shares the width out as jqxGrid's percentage columns did, so narrow windows do not scroll.
             layout: options.layout || 'fitData',
             movableColumns: false,
@@ -65,6 +68,7 @@ export class DataGrid {
         }
 
         this.element.classList.add('osy-datagrid');
+        DataGrid.instances.add(this);
         this.table = new Tabulator(this.element, settings);
         this.ready = new Promise(resolve => this.table.on('tableBuilt', resolve));
         this.table.on('cellEdited', cell => this.syncRows([cell.getRow()]));
@@ -119,10 +123,15 @@ export class DataGrid {
                 hozAlign: 'center',
                 minWidth: spec.minWidth || 110,
                 cssClass: 'osy-datagrid-action-cell',
-                formatter: () => spec.action.html,
+                // visible(row) hides the action on rows that may not be removed, e.g. a model's default entry.
+                formatter: cell => {
+                    const source = this.source(cell.getRow());
+                    return source && spec.action.visible && !spec.action.visible(source) ? '' : spec.action.html;
+                },
                 cellClick: (event, cell) => {
                     const source = this.source(cell.getRow());
-                    if (source) spec.action.onClick(source);
+                    if (!source || (spec.action.visible && !spec.action.visible(source))) return;
+                    spec.action.onClick(source);
                 }
             });
         }
@@ -339,9 +348,16 @@ export class DataGrid {
     // Re-measure and re-render, e.g. when a grid built in a hidden tab is shown or a lookup name changed.
     refresh() {
         return this.ready.then(() => {
-            if (!this.table) return;
-            this.table.setHeight(this.availableHeight());
+            if (!this.table || !this.element.offsetParent) return;
+            if (!this.autoHeight) this.table.setHeight(this.availableHeight());
             this.table.redraw(true);
+        });
+    }
+
+    // Grids built inside a hidden tab have no size until it opens, so the one now on screen is redrawn.
+    static refreshVisible() {
+        DataGrid.instances.forEach(grid => {
+            if (document.body.contains(grid.element)) grid.refresh(); else grid.destroy();
         });
     }
 
@@ -453,11 +469,12 @@ export class DataGrid {
         const height = window.innerHeight;
         if (this.lastSize && this.lastSize.width === width && this.lastSize.height === height) return;
         this.lastSize = { width, height };
-        this.table.setHeight(this.availableHeight());
+        if (!this.autoHeight) this.table.setHeight(this.availableHeight());
         this.table.redraw();
     }
 
     destroy() {
+        DataGrid.instances.delete(this);
         window.removeEventListener('resize', this.onResize);
         if (this.resizeObserver) this.resizeObserver.disconnect();
         this.resizeObserver = null;
@@ -514,6 +531,9 @@ export class DataGrid {
     static markup(value) {
         return escapeHtml(value == null ? '' : String(value)).replace(/&lt;(\/?)(sup|sub)&gt;/gi, '<$1$2>');
     }
+
+    // Live grids, so a tab change can redraw whichever became visible.
+    static instances = new Set();
 
     // The text conditions jqxGrid listed, in its order and wording.
     static CONDITIONS = [

@@ -399,214 +399,129 @@ export class Grid {
         return this.techGrid;
     }
 
-    static techGroupGrid(groups) {
+    // Technology groups on the shared grid: the first group is the model default and cannot be deleted.
+    static techGroupGrid(groups, {onChange = null, onAdd = null, onDelete = null} = {}) {
+        let uniqueName = (value, group) => groups.some(other => other !== group && String(other.TechGroup).trim() == value)
+            ? 'Technology group name should be unique!' : null;
 
-        let srcTechGroup = JqxSources.srcTechGroup(groups);
-        var daTechGroup = new $.jqx.dataAdapter(srcTechGroup);
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridTechGroup').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridTechGroup').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].TechGroup.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Technology group name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var cellsrendererbutton = function (row, column, value) {
-            // var id = $("#osy-gridComm").jqxGrid('getrowid', row);
-            if (row == 0) {
-                return '';
-            }
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteTechGroup" data-id=' + row + ' ><i class="fa  fa-times danger"></i>Delete</span>';
-        }
-
-        $("#osy-gridTechGroup").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            theme: this.theme(),
-            filterable: true,
-            source: daTechGroup,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:true,
-            showsortcolumnbackground: false,
-            autoshowcolumnsmenubutton: false,
+        if (this.techGroupGridInstance) this.techGroupGridInstance.destroy();
+        this.techGroupGridInstance = new DataGrid('#osy-gridTechGroup', {
+            rows: groups,
+            key: group => group.TechGroupId,
+            rangeSelection: false,
+            layout: 'fitColumns',
+            height: 'auto',
             columns: [
-                // { text: 'TechGroupId', datafield: 'TechGroupId', hidden: true },
-                { text: 'Technology group name', datafield: 'TechGroup', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Description', datafield: 'Desc', width: '70%', align: 'center', cellsalign: 'left', sortable: false, menu:false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addTechGroup" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add group</span>', datafield: 'TechGroupId', width: '10%', cellsrenderer: cellsrendererbutton, editable: false,sortable: false, menu:false },
-            ]
+                { title: 'Technology group name', field: 'TechGroup', sortable: true, menu: true, widthGrow: 20, minWidth: 140, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', widthGrow: 70, minWidth: 180, text: {} },
+                {
+                    titleHtml: '<span id="osy-addTechGroup" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add group</span>',
+                    headerClick: event => {
+                        if (onAdd && event.target.closest('#osy-addTechGroup')) onAdd();
+                    },
+                    widthGrow: 10,
+                    minWidth: 85,
+                    action: {
+                        html: '<span class="osy-datagrid-action deleteTechGroup"><i class="fa fa-times danger"></i> Delete</span>',
+                        visible: group => groups.indexOf(group) !== 0,
+                        onClick: group => {
+                            if (onDelete) onDelete(group);
+                        }
+                    }
+                }
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
         });
+        return this.techGroupGridInstance;
     }
 
-    static commGrid(commodities) {
-        ///settings units
-        let UnitsArray = [];
-        let UnitsSettings = JSON.parse(localStorage.getItem("osy-units"));
-        if(UnitsSettings){
-            UnitsArray = UnitsSettings
-        }
-        else{
-            UnitsArray = UNITS;
-        }
-        let srcComms = JqxSources.srcComm(commodities);
-        let srcUnits = JqxSources.srcUnit(JSON.stringify(UnitsArray));
-
-        var daComms = new $.jqx.dataAdapter(srcComms);
-        var daUnits = new $.jqx.dataAdapter(srcUnits, {
-            autoBind: true
+    // Units for the configuration grids: the Settings page may override the built-in list.
+    static unitColumn() {
+        let units = JSON.parse(localStorage.getItem("osy-units")) || UNITS;
+        let names = {};
+        $.each(units, function (id, unit) {
+            if (!(unit.id in names)) names[unit.id] = unit.name;
         });
-
-        var ddlEditor = function (row, value, editor) {
-            editor.jqxDropDownList({ source: daUnits, displayMember: 'name', valueMember: 'id', groupMember: 'group', filterable: true, theme: this.themeMaterial,filterHeight:30 });
-        }.bind(this);
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridComm').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridComm').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Comm.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Commodity name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var cellsrendererbutton = function (row, column, value) {
-            // var id = $("#osy-gridComm").jqxGrid('getrowid', row);
-            // if (row == 0) {
-            //     return '';
-            // }
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteComm" data-commId=' + value + ' data-id=' + row + ' ><i class="fa fa-times danger"></i>Delete</span>';
-        }
-
-        let height = $(window).height() - 370;
-        $("#osy-gridComm").jqxGrid({
-            width: '100%',
-            //autoheight: true,
-            // columnsheight: 20,
-            height:height,
-            filterable:true,
-            theme: this.theme(),
-            source: daComms,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:true,
-            showsortcolumnbackground: false,
-            autoshowcolumnsmenubutton: false,
-            // pageable: true,
-            // pagesize: 10,
-            //pagesizeoptions: ['10', '25', '50', '100', '250', '500', '750', '1000'],
-            columns: [
-                { text: 'Commodity name', datafield: 'Comm', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1, filterable: true },
-                { text: 'Description', datafield: 'Desc', width: '50%', align: 'center', cellsalign: 'left',sortable: false,menu:false },
-                { text: 'Unit', datafield: 'UnitId', width: '20%', columntype: 'dropdownlist', createeditor: ddlEditor, align: 'center', cellsalign: 'center',sortable: false, menu:false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addComm" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add</span>', datafield: 'CommId', width: '10%', cellsrenderer: cellsrendererbutton, editable: false, sortable: false, menu:false },
-            ]
-        });
+        return {
+            options: () => units.map(unit => ({ value: unit.id, text: unit.name, group: unit.group })),
+            label: id => names[id] || id || ''
+        };
     }
 
-    static emisGrid(emissions) {
+    // Commodities on the shared grid; at least one must remain, so the last row keeps no Delete.
+    static commGrid(commodities, {onChange = null, onAdd = null, onDelete = null} = {}) {
+        let uniqueName = (value, comm) => commodities.some(other => other !== comm && String(other.Comm).trim() == value)
+            ? 'Commodity name should be unique!' : null;
 
-        ///settings units
-        let UnitsArray = [];
-        let UnitsSettings = JSON.parse(localStorage.getItem("osy-units"));
-        if(UnitsSettings){
-            UnitsArray = UnitsSettings
-        }
-        else{
-            UnitsArray = UNITS;
-        }
-
-        let srcEmi = JqxSources.srcEmi(emissions);
-        let srcUnit = JqxSources.srcUnit(JSON.stringify(UnitsArray));
-
-        var daEmi = new $.jqx.dataAdapter(srcEmi);
-        var daUnit = new $.jqx.dataAdapter(srcUnit);
-
-        var ddlEditor = function (row, value, editor) {
-            editor.jqxDropDownList({ source: daUnit, displayMember: 'name', valueMember: 'id', groupMember: 'group', filterable: true,theme: this.themeMaterial,filterHeight:35  });
-        }.bind(this);
-
-        var validation_1 = function (cell, value) {
-            var validationResult = true;
-            var rows = $('#osy-gridEmis').jqxGrid('getboundrows');
-            var currentRowId = String($('#osy-gridEmis').jqxGrid('getrowid', cell.row));
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].Emis.trim() == value.trim() && String(rows[i].uid) !== currentRowId) {
-                    validationResult = false;
-                    break;
-                }
-            };
-
-            if (validationResult == false) {
-                Message.smallBoxWarning("Input message", "Emission name should be unique!", 3000);
-                return { result: false, message: "" };
-            }
-            return true;
-        }
-
-        var cellsrendererbutton = function (row, column, value) {
-            //var id = $("#osy-gridEmis").jqxGrid('getrowid', row);
-            if (row == 0) {
-                return '';
-            }
-            return '<span style="padding:10px; width:100%; border:none" class="btn btn-default deleteEmis" data-id=' + row + '><i class="fa  fa-times danger"></i>Delete</span>';
-        }
-
-        var tooltiprenderer = function (element) {
-            let id = $(element).text();
-            let tooltip = {
-                'MPEL': 'Model Period <br /> Emission Limit',
-                'MPEE': 'Model Period <br /> Exogenous Emission'
-            }
-            $(element).parent().jqxTooltip({ position: 'mouse', content: tooltip[id] });
-
-            //$("#filmPicture1").jqxTooltip({ content: '<b>Title:</b> <i>The Amazing Spider-man</i><br /><b>Year:</b> 2012', position: 'mouse', name: 'movieTooltip'});
-        }
-
-        $("#osy-gridEmis").jqxGrid({
-            width: '100%',
-            autoheight: true,
-            // columnsheight: 20,
-            theme: this.theme(),
-            source: daEmi,
-            filterable:true,
-            editable: true,
-            selectionmode: 'none',
-            enablehover: false,
-            sortable:true,
-            showsortcolumnbackground: false,
-            autoshowcolumnsmenubutton: false,
+        if (this.commGridInstance) this.commGridInstance.destroy();
+        this.commGridInstance = new DataGrid('#osy-gridComm', {
+            rows: commodities,
+            key: comm => comm.CommId,
+            rangeSelection: false,
+            layout: 'fitColumns',
             columns: [
-                { text: 'EmisId', datafield: 'EmisId', hidden: true },
-                { text: 'Emission name', datafield: 'Emis', width: '20%', align: 'center', cellsalign: 'left', validation: validation_1 },
-                { text: 'Description', datafield: 'Desc', width: '50%', align: 'center', cellsalign: 'left',sortable: false, menu:false },
-                { text: 'Unit', datafield: 'UnitId', width: '20%', columntype: 'dropdownlist', createeditor: ddlEditor, align: 'center', cellsalign: 'center',sortable: false, menu:false },
-                { text: '<span style="padding:10px; width:100%; border:none" id="osy-addEmis" class="btn btn-osy" ><i class="fa fa-plus fa-lg"></i>Add emission</span>', datafield: 'Delete', width: '10%', cellsrenderer: cellsrendererbutton, editable: false,sortable: false, menu:false },
-            ]
+                { title: 'Commodity name', field: 'Comm', sortable: true, menu: true, widthGrow: 20, minWidth: 120, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', widthGrow: 50, minWidth: 160, text: {} },
+                { title: 'Unit', field: 'UnitId', hozAlign: 'center', widthGrow: 20, minWidth: 90, select: this.unitColumn() },
+                {
+                    titleHtml: '<span id="osy-addComm" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add</span>',
+                    headerClick: event => {
+                        if (onAdd && event.target.closest('#osy-addComm')) onAdd();
+                    },
+                    widthGrow: 10,
+                    minWidth: 85,
+                    action: {
+                        html: '<span class="osy-datagrid-action deleteComm"><i class="fa fa-times danger"></i> Delete</span>',
+                        visible: () => commodities.length > 1,
+                        onClick: comm => {
+                            if (onDelete) onDelete(comm);
+                        }
+                    }
+                }
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
         });
+        return this.commGridInstance;
+    }
+
+    // Emissions on the shared grid: the first emission is the model default and cannot be deleted.
+    static emisGrid(emissions, {onChange = null, onAdd = null, onDelete = null} = {}) {
+        let uniqueName = (value, emis) => emissions.some(other => other !== emis && String(other.Emis).trim() == value)
+            ? 'Emission name should be unique!' : null;
+
+        if (this.emisGridInstance) this.emisGridInstance.destroy();
+        this.emisGridInstance = new DataGrid('#osy-gridEmis', {
+            rows: emissions,
+            key: emis => emis.EmisId,
+            rangeSelection: false,
+            layout: 'fitColumns',
+            height: 'auto',
+            columns: [
+                { title: 'Emission name', field: 'Emis', sortable: true, menu: true, widthGrow: 20, minWidth: 120, text: { validate: uniqueName } },
+                { title: 'Description', field: 'Desc', widthGrow: 50, minWidth: 160, text: {} },
+                { title: 'Unit', field: 'UnitId', hozAlign: 'center', widthGrow: 20, minWidth: 90, select: this.unitColumn() },
+                {
+                    titleHtml: '<span id="osy-addEmis" class="btn btn-white btn-osy btn-xs"><i class="fa fa-plus"></i> Add emission</span>',
+                    headerClick: event => {
+                        if (onAdd && event.target.closest('#osy-addEmis')) onAdd();
+                    },
+                    widthGrow: 10,
+                    minWidth: 85,
+                    action: {
+                        html: '<span class="osy-datagrid-action deleteEmis"><i class="fa fa-times danger"></i> Delete</span>',
+                        visible: emis => emissions.indexOf(emis) !== 0,
+                        onClick: emis => {
+                            if (onDelete) onDelete(emis);
+                        }
+                    }
+                }
+            ],
+            onChange: onChange,
+            onInvalid: message => Message.smallBoxWarning('Input message', message, 3000)
+        });
+        return this.emisGridInstance;
     }
 
     static stgGrid(storages, techs, techNames) {

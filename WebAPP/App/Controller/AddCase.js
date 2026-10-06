@@ -4,6 +4,7 @@ import { Base } from "../../Classes/Base.Class.js";
 import { SyncS3 } from "../../Classes/SyncS3.Class.js";
 import { Html } from "../../Classes/Html.Class.js";
 import { Grid } from "../../Classes/Grid.Class.js";
+import { DataGrid } from "../../Classes/DataGrid.Class.js";
 import { Osemosys } from "../../Classes/Osemosys.Class.js";
 import { SmartAdmin } from "../../Classes/SmartAdmin.Class.js";
 import { Model } from "../Model/AddCase.Model.js";
@@ -154,6 +155,112 @@ export default class AddCase {
         }
     }
 
+    static techGroupChanged(model, group, field, value) {
+        if (field == 'TechGroup') {
+            model.techGroupNames[group.TechGroupId] = value;
+        }
+    }
+
+    static addTechGroup(model) {
+        let defaultTechGroup = DefaultObj.defaultTechGroup();
+        let group = JSON.parse(JSON.stringify(defaultTechGroup[0], ['TechGroupId', 'TechGroup', 'Desc']));
+        model.techGroups.push(group);
+        model.techGroupNames[group.TechGroupId] = group.TechGroup;
+        Grid.techGroupGridInstance.addRow(group, false);
+        model.techGroupCount++;
+        $("#techGroupCount").text(model.techGroupCount);
+    }
+
+    // Deletes by TechGroupId and drops the group from every technology that belonged to it.
+    static deleteTechGroup(model, techGroupId) {
+        let index = model.techGroups.findIndex(obj => obj.TechGroupId == techGroupId);
+        if (index <= 0) return;
+        model.techGroups.splice(index, 1);
+        Grid.techGroupGridInstance.deleteRow(techGroupId);
+        delete model.techGroupNames[techGroupId];
+        model.techGroupCount--;
+        $("#techGroupCount").text(model.techGroupCount);
+        $.each(model.techs, function (id, techObj) {
+            techObj['TG'] = techObj['TG'].filter(item => item !== techGroupId);
+        });
+        Grid.techGrid.refresh();
+    }
+
+    static commodityChanged(model, comm, field, value) {
+        if (field == 'UnitId') {
+            Message.bigBoxWarning('Unit change warning!', 'Changing commodity unit will not recalculate entered nor default values in the model.', 3000);
+        }
+        if (field == 'Comm') {
+            model.commNames[comm.CommId] = value;
+        }
+    }
+
+    static addCommodity(model) {
+        let defaultComm = DefaultObj.defaultComm();
+        let comm = JSON.parse(JSON.stringify(defaultComm[0], ['CommId', 'Comm', 'Desc', 'UnitId']));
+        model.commodities.unshift(comm);
+        model.commNames[comm.CommId] = comm.Comm;
+        Grid.commGridInstance.addRow(comm);
+        model.commCount++;
+        $("#commCount").text(model.commCount);
+    }
+
+    // Deletes by CommId and drops the commodity from every technology that referenced it.
+    static deleteCommodity(model, commId) {
+        if (model.commodities.length <= 1) {
+            Message.bigBoxWarning('Warning', 'You cannot delete. At least one commodity is necessary.', 3000);
+            return;
+        }
+        let index = model.commodities.findIndex(obj => obj.CommId == commId);
+        if (index < 0) return;
+        model.commodities.splice(index, 1);
+        Grid.commGridInstance.deleteRow(commId);
+        delete model.commNames[commId];
+        model.commCount--;
+        $("#commCount").text(model.commCount);
+        $.each(model.techs, function (id, techObj) {
+            techObj['IAR'] = techObj['IAR'].filter(item => item !== commId);
+            techObj['OAR'] = techObj['OAR'].filter(item => item !== commId);
+            techObj['INCR'] = techObj['INCR'].filter(item => item !== commId);
+            techObj['ITCR'] = techObj['ITCR'].filter(item => item !== commId);
+        });
+        Grid.techGrid.refresh();
+    }
+
+    static emissionChanged(model, emis, field, value) {
+        if (field == 'UnitId') {
+            Message.bigBoxWarning('Unit change warning!', 'Changing emission unit will not recalculate entered nor default values in the model.', 3000);
+        }
+        if (field == 'Emis') {
+            model.emiNames[emis.EmisId] = value;
+        }
+    }
+
+    static addEmission(model) {
+        let defaultEmi = DefaultObj.defaultEmi();
+        let emis = JSON.parse(JSON.stringify(defaultEmi[0], ['EmisId', 'Emis', 'Desc', 'UnitId']));
+        model.emissions.push(emis);
+        model.emiNames[emis.EmisId] = emis.Emis;
+        Grid.emisGridInstance.addRow(emis, false);
+        model.emisCount++;
+        $("#emisCount").text(model.emisCount);
+    }
+
+    // Deletes by EmisId and drops the emission from every technology that referenced it.
+    static deleteEmission(model, emisId) {
+        let index = model.emissions.findIndex(obj => obj.EmisId == emisId);
+        if (index <= 0) return;
+        model.emissions.splice(index, 1);
+        Grid.emisGridInstance.deleteRow(emisId);
+        delete model.emiNames[emisId];
+        model.emisCount--;
+        $("#emisCount").text(model.emisCount);
+        $.each(model.techs, function (id, techObj) {
+            techObj['EAR'] = techObj['EAR'].filter(item => item !== emisId);
+        });
+        Grid.techGrid.refresh();
+    }
+
     static initPage(model) {
         Message.clearMessages();
         //$('a[href="#tabComms"]').click();
@@ -166,7 +273,11 @@ export default class AddCase {
         Grid.seGrid(model.seasons);
         Grid.dtGrid(model.daytypes);
         Grid.dtbGrid(model.dailytimebrackets);
-        Grid.commGrid(model.commodities);
+        Grid.commGrid(model.commodities, {
+            onChange: (comm, field, value) => AddCase.commodityChanged(model, comm, field, value),
+            onAdd: () => AddCase.addCommodity(model),
+            onDelete: comm => AddCase.deleteCommodity(model, comm.CommId)
+        });
         Grid.stgGrid(model.stg, model.techs, model.techNames);
         Grid.techsGrid(model.techs, model.commodities, model.techGroups, model.emissions, model.commNames, model.emiNames, model.techGroupNames, {
             onChange: (tech, field, value) => AddCase.techChanged(model, tech, field, value),
@@ -174,8 +285,16 @@ export default class AddCase {
             onDelete: tech => AddCase.deleteTech(model, tech.TechId)
         });
       
-        Grid.techGroupGrid(model.techGroups);
-        Grid.emisGrid(model.emissions);
+        Grid.techGroupGrid(model.techGroups, {
+            onChange: (group, field, value) => AddCase.techGroupChanged(model, group, field, value),
+            onAdd: () => AddCase.addTechGroup(model),
+            onDelete: group => AddCase.deleteTechGroup(model, group.TechGroupId)
+        });
+        Grid.emisGrid(model.emissions, {
+            onChange: (emis, field, value) => AddCase.emissionChanged(model, emis, field, value),
+            onAdd: () => AddCase.addEmission(model),
+            onDelete: emis => AddCase.deleteEmission(model, emis.EmisId)
+        });
         Grid.scenarioGrid(model.scenarios);
         Grid.constraintGrid(model.techs, model.constraints, model.techNames);
 
@@ -207,14 +326,11 @@ export default class AddCase {
             update: () => $("#osy-caseForm").jqxValidator("validate")
         });
 
-        let $divTechGroup = $("#osy-gridTechGroup");
         let $divStg = $("#osy-gridStg");
-        let $divComm = $("#osy-gridComm");
         let $divTs = $("#osy-gridTs");
         let $divSe = $("#osy-gridSe");
         let $divDt = $("#osy-gridDt");
         let $divDtb = $("#osy-gridDtb");
-        let $divEmi = $("#osy-gridEmis");
         let $divScenario = $("#osy-gridScenario");
         let $divConstraint = $("#osy-gridConstraint");
         let $divIndicator = $("#osy-gridIndicator");
@@ -376,59 +492,7 @@ export default class AddCase {
 
         //TECHNOLOGIES: add, edit and delete are handled through Grid.techsGrid callbacks (see initPage)
 
-        $('#osy-caseForm').undelegate("#osy-addTechGroup", "click");
-        $('#osy-caseForm').delegate("#osy-addTechGroup", "click", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultTechGroup = DefaultObj.defaultTechGroup();
-            //tech grid se pravi dinalicki potrebno je updatovati model
-            //JSON parse strungify potrebno da iz nekog razloga izbacino elemente uid boundindex...
-            model.techGroups.push(JSON.parse(JSON.stringify(defaultTechGroup[0], ['TechGroupId', 'TechGroup', 'Desc'])));
-            //model.techs.push(defaultTech[0]);
-            //update technames
-            model.techGroupNames[defaultTechGroup[0]['TechGroupId']] = defaultTechGroup[0]['TechGroup'];
-            //add row in grid
-            $divTechGroup.jqxGrid('addrow', null, defaultTechGroup);
-            //upat eza broj techs u tabu
-            model.techGroupCount++;
-            $("#techGroupCount").text(model.techGroupCount);
-        });
-
-        $('#osy-caseForm').undelegate(".deleteTechGroup", "click");
-        $('#osy-caseForm').delegate(".deleteTechGroup", "click", function (e) {
-            //$(".deleteTech").on("click", function(e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            if (id != 0) {
-                var techGroupId = $divTechGroup.jqxGrid('getcellvalue', id, 'TechGroupId');
-                var rowid = $divTechGroup.jqxGrid('getrowid', id);
-                $divTechGroup.jqxGrid('deleterow', rowid);
-                model.techGroups.splice(id, 1);
-                //update techNames
-                delete model.techGroupNames[techGroupId];
-                //update count
-                model.techGroupCount--;
-                $("#techGroupCount").text(model.techGroupCount);
-                //izbirsati iz modela za tech nz EAR za izbrisanu emisiju ako je slucajno odabrana za neku tehnologiju
-                $.each(model.techs, function (id, techObj) {
-                    techObj['TG'] = techObj['TG'].filter(item => item !== techGroupId);
-                });
-            }
-        });
-
-        $divTechGroup.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            model.techGroups[rowBoundIndex][column] = value;
-
-            if (column == 'TechGroup') {
-                var techGroupId = $divTechGroup.jqxGrid('getcellvalue', rowBoundIndex, 'TechGroupId');
-                model.techGroupNames[techGroupId] = value;
-            }
-        });
+        //TECHNOLOGY GROUPS: handled through Grid.techGroupGrid callbacks (see initPage)
 
         //TIMESLICES GRID AND EVENTS
         $('#osy-caseForm').undelegate("#osy-addTs", "click");
@@ -749,127 +813,7 @@ export default class AddCase {
         });
 
         //COMMODITIES GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addComm", "click");
-        $('#osy-caseForm').delegate("#osy-addComm", "click", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultComm = DefaultObj.defaultComm();
-            model.commodities.unshift(JSON.parse(JSON.stringify(defaultComm[0], ['CommId', 'Comm', 'Desc', 'UnitId'])));
-
-            //update commnames
-            model.commNames[defaultComm[0]['CommId']] = defaultComm[0]['Comm'];
-            //add row
-            $divComm.jqxGrid('addrow', null, defaultComm, 'first');
-            model.commCount++;
-            $("#commCount").text(model.commCount);
-        });
-
-        $('#osy-caseForm').undelegate(".deleteComm", "click");
-        $('#osy-caseForm').delegate(".deleteComm", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            var htmlcommId = $(this).attr('data-commId');  
-            if (model.commodities.length > 1 && $divComm.jqxGrid('getrows').length>1)  {
-                var commId = $divComm.jqxGrid('getcellvalue', id, 'CommId');
-                var rowid = $divComm.jqxGrid('getrowid', id);
-
-                //provjera da brisemo tacan commoditu
-                if(model.commodities[id].CommId != commId ||commId != htmlcommId){ 
-                    Message.bigBoxDanger('Commodity deletion error', `Wrong index!! <b>${model.commodities[id].CommId}</b>?`, 3000);
-                    return false;
-                }
-
-                $divComm.jqxGrid('deleterow', rowid);
-                model.commodities.splice(id, 1);
-                //update techNames
-                delete model.commNames[commId];
-                //update count
-                model.commCount--;
-                $("#commCount").text(model.commCount);
-                //izbirsati iz modela za tech nz EAR za izbrisanu emisiju ako je slucajno odabrana za neku tehnologiju
-                $.each(model.techs, function (id, techObj) {
-                    techObj['IAR'] = techObj['IAR'].filter(item => item !== commId);
-                    techObj['OAR'] = techObj['OAR'].filter(item => item !== commId);
-                    techObj['EAR'] = techObj['EAR'].filter(item => item !== commId);
-                    techObj['INCR'] = techObj['INCR'].filter(item => item !== commId);
-                    techObj['ITCR'] = techObj['ITCR'].filter(item => item !== commId);
-                });
-            }
-            else{
-                Message.bigBoxWarning('Warning', 'You cannot delete. At least one commodity is necessary.', 3000);
-            }
-        });
-
-        $divComm.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            model.commodities[rowBoundIndex][column] = value;
-            if (column == 'UnitId') {
-                Message.bigBoxWarning('Unit change warning!', 'Changing commodity unit will not recalculate entered nor default values in the model.', 3000);
-            }
-            if (column == 'Comm') {
-                var commId = $divComm.jqxGrid('getcellvalue', rowBoundIndex, 'CommId');
-                model.commNames[commId] = value;
-            }
-        });
-
-        //EMISSIONS GRID AND EVENTS
-        $('#osy-caseForm').undelegate("#osy-addEmis", "click");
-        $('#osy-caseForm').delegate("#osy-addEmis", "click", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            let defaultEmi = DefaultObj.defaultEmi();
-            model.emissions.push(JSON.parse(JSON.stringify(defaultEmi[0], ['EmisId', 'Emis', 'Desc', 'UnitId'])));
-            //update commnames
-            model.emiNames[defaultEmi[0]['EmisId']] = defaultEmi[0]['Emis'];
-            //add row
-            $divEmi.jqxGrid('addrow', null, defaultEmi);
-            model.emisCount++;
-            $("#emisCount").text(model.emisCount);
-            $divEmi.jqxGrid('refresh');
-        });
-
-        $('#osy-caseForm').undelegate(".deleteEmis", "click");
-        $('#osy-caseForm').delegate(".deleteEmis", "click", function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var id = $(this).attr('data-id');
-            if (id != 0) {
-                var emisId = $divEmi.jqxGrid('getcellvalue', id, 'EmisId');
-                var rowid = $divEmi.jqxGrid('getrowid', id);
-                $divEmi.jqxGrid('deleterow', rowid);
-                model.emissions.splice(id, 1);
-                //update emisnames
-                delete model.emiNames[emisId];
-                //update count
-                model.emisCount--;
-                $("#emisCount").text(model.emisCount);
-
-                //izbirsati iz modela za tech nz EAR za izbrisanu emisiju ako je slucajno odabrana za neku tehnologiju
-                $.each(model.techs, function (id, techObj) {
-                    techObj['EAR'] = techObj['EAR'].filter(item => item !== emisId);
-                    model.techs[id]['EAR'] = techObj['EAR'];
-                });
-            }
-        });
-
-        $divEmi.on('cellvaluechanged', function (event) {
-            var args = event.args;
-            var column = event.args.datafield;
-            var rowBoundIndex = args.rowindex;
-            var value = args.newvalue.trim();
-            model.emissions[rowBoundIndex][column] = value;
-            if (column == 'UnitId') {
-                Message.bigBoxWarning('Unit change warning!', 'Changing emission unit will not recalculate entered nor default values in the model.', 3000);
-            }
-            if (column == 'Emis') {
-                var emisId = $divEmi.jqxGrid('getcellvalue', rowBoundIndex, 'EmisId');
-                model.emiNames[emisId] = value;
-            }
-        });
+        //COMMODITIES and EMISSIONS: handled through their grid callbacks (see initPage)
 
         //STORAGE GRID AND EVENTS
         $('#osy-caseForm').undelegate("#osy-addStg", "click");
@@ -1104,12 +1048,9 @@ export default class AddCase {
             var id = $(this).attr('id');
             // console.log('tab id ', id)
             //update tech grid to update IAR OAR EAR with new added or removed comms and emis
-            if (id == 'Techs') {
-                //Grid.techsGrid(model.techs, model.commodities, model.emissions, model.commNames, model.emiNames);
-                // Redraw once the pane is shown: a grid measured while hidden has no header height or widths.
-                $(this).one('shown.bs.tab', () => Grid.techGrid.refresh());
-            }
-            else if (id == 'Constraints') {
+            // Redraw once the pane is shown: a grid measured while hidden has no header height or widths.
+            $(this).one('shown.bs.tab', () => DataGrid.refreshVisible());
+            if (id == 'Constraints') {
                 $("#osy-gridConstraint" ).ready(function() {
                     $divConstraint.jqxGrid('updatebounddata');
                 });
