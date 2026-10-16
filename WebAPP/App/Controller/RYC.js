@@ -2,7 +2,7 @@ import { Message } from "../../Classes/Message.Class.js";
 import { Base } from "../../Classes/Base.Class.js";
 import { Html } from "../../Classes/Html.Class.js";
 import { Model } from "../Model/RYC.Model.js";
-import { Grid } from "../../Classes/Grid.Class.js";
+import { DataGrid } from "../../Classes/DataGrid.Class.js";
 import { Osemosys } from "../../Classes/Osemosys.Class.js";
 import { GROUPNAMES } from "../../Classes/Const.Class.js";
 import { DEF } from "../../Classes/Definition.Class.js";
@@ -48,15 +48,29 @@ export default class RYC {
         Html.title(model.casename, model.PARAMNAMES[model.param], GROUPNAMES[model.group]);
         Html.ddlParams(model.PARAMETERS[model.group], model.param);
 
-        let $divGrid = $('#osy-gridRYC');
-        var daGrid = new $.jqx.dataAdapter(model.srcGrid);
-        Grid.Grid($divGrid, daGrid, model.columns, {groupable: false, filterable: true, sortable:true});
+        // A model switch rebuilds the page in place, so the previous grid is released first.
+        if (RYC.grid) RYC.grid.destroy();
+        RYC.grid = new DataGrid('#osy-gridRYC', {
+            rows: model.gridData[model.param],
+            columns: model.columns,
+            key: row => row.ScId + '|' + row.CommId,
+            layout: 'fitColumns',
+            decimals: model.d,
+            rowClass: model.rowClass,
+            onInvalid: message => Message.smallBoxWarning('Validation', message, 3000)
+        });
 
         if (model.scenariosCount > 1) {
             Html.lblScenario( model.scenariosCount);
             Html.ddlScenarios(model.scenarios, model.scenarios[1]['ScenarioId']);
-            Grid.applyGridFilter($divGrid, model.years);
+            RYC.applyScenarioFilter(model);
         }
+    }
+
+    // As with the jqxGrid filters: show rows with at least one value, plus every row of an opened scenario.
+    static applyScenarioFilter(model, sc = null) {
+        RYC.grid.setRowFilter(row => (sc !== null && row.Sc === sc) ||
+            model.years.some(year => row[year] !== null && row[year] !== undefined));
     }
 
     static refreshPage(casename) {
@@ -87,8 +101,6 @@ export default class RYC {
 
     static initEvents(model) {
 
-        let $divGrid = $('#osy-gridRYC');
-
         $("#casePicker").off('click');
         $("#casePicker").on('click', '.selectCS', function (e) {
             e.preventDefault();
@@ -99,19 +111,23 @@ export default class RYC {
             Message.smallBoxConfirmation("Confirmation!", "Model " + casename + " selected!", 3500);
         });
 
+        // Unbound first: refreshPage runs initEvents again, which used to attach a second save handler.
+        $("#osy-saveRYCdata").off('click');
         $("#osy-saveRYCdata").on('click', function (event) {
             event.preventDefault();
             event.stopImmediatePropagation();
 
             let param = $("#osy-ryt").val();
-            let rycData = $divGrid.jqxGrid('getboundrows');
-            let daRYCData = JSON.parse(JSON.stringify(rycData, ['ScId', 'CommId'].concat(model.years)));
 
+            // The grid writes every edit back to model.gridData, so it is the data that is saved.
             let saveData = {};
-            $.each(daRYCData, function (id, obj) {
+            $.each(model.gridData[param], function (id, obj) {
                 if (!saveData[obj.ScId]) { saveData[obj.ScId] = []; }
-                saveData[obj.ScId].push(obj);
-                delete obj.ScId;
+                let row = { CommId: obj.CommId };
+                $.each(model.years, function (i, year) {
+                    row[year] = obj[year];
+                });
+                saveData[obj.ScId].push(row);
             });
 
             Osemosys.updateData(saveData, param, "RYC.json")
@@ -128,12 +144,12 @@ export default class RYC {
         });
 
         //change of ddl parameters
+        $('#osy-ryt').off('change');
         $('#osy-ryt').on('change', function () {
             Html.title(model.casename, model.PARAMNAMES[this.value], GROUPNAMES[model.group]);
-            model.srcGrid.root = this.value;
-            $divGrid.jqxGrid('updatebounddata');
             model.param = this.value;
-            Grid.applyGridFilter($divGrid, model.years);
+            RYC.grid.setRows(model.gridData[model.param]);
+            RYC.applyScenarioFilter(model);
             Html.lblScenario( model.scenariosCount);
             $('#definition').html(`${DEF[model.group][model.param].definition}`);
         });
@@ -150,7 +166,7 @@ export default class RYC {
             e.stopImmediatePropagation();
             var sc = $("#osy-scenarios").val();
             Html.lblScenario(sc);
-            Grid.applyGridFilter($divGrid, model.years, sc);
+            RYC.applyScenarioFilter(model, sc);
             Message.smallBoxInfo('Info', 'Scenario data opened!', 2000);
         });
 
@@ -159,7 +175,7 @@ export default class RYC {
             e.preventDefault();
             e.stopImmediatePropagation();
             Html.lblScenario( model.scenariosCount);
-            Grid.applyGridFilter($divGrid, model.years);
+            RYC.applyScenarioFilter(model);
             Message.smallBoxInfo('Info', 'Scenario data hidden!', 2000);
         });
 
@@ -168,67 +184,30 @@ export default class RYC {
             e.preventDefault();
             e.stopImmediatePropagation();
             var sc = $("#osy-scenarios").val();
-            let rows = $divGrid.jqxGrid('getboundrows');
 
-            $.each(rows, function (id, obj) {
+            $.each(model.gridData[model.param], function (id, obj) {
                 if (obj.Sc == sc) {
                     $.each(model.years, function (i, year) {
-                        model.gridData[model.param][id][year] = null;
+                        obj[year] = null;
                     });
                 }
             });
 
-            model.srcGrid.localdata = model.gridData;
-            $divGrid.jqxGrid('updatebounddata');
+            RYC.grid.setRows(model.gridData[model.param]);
 
             Html.lblScenario( model.scenariosCount);
-            Grid.applyGridFilter($divGrid, model.years);
+            RYC.applyScenarioFilter(model);
             Message.smallBoxInfo('Info', 'Scenario data removed!', 2000);
         });
 
-        let pasteEvent = false;
-        $divGrid.bind('keydown', function (event) {
-            pasteEvent = false;
-            var ctrlDown = false, ctrlKey = 17, cmdKey = 91, vKey = 86, cKey = 67;
-            var key = event.charCode ? event.charCode : event.keyCode ? event.keyCode : 0;
-            if (key == vKey) {
-                pasteEvent = true;
-                setTimeout(function () {
-                    let gridData = $divGrid.jqxGrid('getboundrows');
-                    //update model
-                    model.gridData[model.param] = gridData;
-                }, 500);
-            }
-        }).on('cellvaluechanged', function (event) {
-            if (!pasteEvent) {
-                Pace.restart();
-                var args = event.args;
-                var year = event.args.datafield;
-                var rowBoundIndex = args.rowindex;
-                var value = args.newvalue;
-                var commId = $divGrid.jqxGrid('getcellvalue', rowBoundIndex, 'CommId');
-                var scId = $divGrid.jqxGrid('getcellvalue', rowBoundIndex, 'ScId');
-                //update model grid
-                $.each(model.gridData[model.param], function (id, obj) {
-                    if (obj.CommId == commId && obj.ScId == scId) {
-                        if (value) {
-                            obj[year] = value;
-                        } else {
-                            obj[year] = 0;
-                        }
-                    }
-                });
-            }
-        });
-
+        $("#resizeColumns").off('click');
         let res = true;
         $("#resizeColumns").click(function () {
             if (res) {
-                $divGrid.jqxGrid('autoresizecolumn', 'Sc');
-                $divGrid.jqxGrid('autoresizecolumn', 'Comm');
+                RYC.grid.fitColumns(['Comm', 'Sc']);
             }
             else {
-                $divGrid.jqxGrid('autoresizecolumns');
+                RYC.grid.fitColumns();
             }
             res = !res;
         });
@@ -236,8 +215,8 @@ export default class RYC {
         $("#xlsAll").off('click');
         $("#xlsAll").click(function (e) {
             e.preventDefault();
-            let rytData = $divGrid.jqxGrid('getdisplayrows');
-            let data = JSON.parse(JSON.stringify(rytData, ['Sc', 'Comm', 'UnitId'].concat(model.years)));
+            let rycData = RYC.grid.visibleRows();
+            let data = JSON.parse(JSON.stringify(rycData, ['Sc', 'Comm', 'UnitId'].concat(model.years)));
             Base.prepareCSV(model.casename, data)
             .then(response =>{
                 Message.smallBoxInfo('Case study message', response.message, 3000);
@@ -253,21 +232,20 @@ export default class RYC {
         $("#decUp").on('click', function (e) {
             e.preventDefault();
             e.stopImmediatePropagation();
-            model.d++;
-            model.decimal = 'd' + parseInt(model.d);
-            $divGrid.jqxGrid('refresh');
+            model.d = DataGrid.clampDecimals(model.d + 1);
+            RYC.grid.setDecimals(model.d);
         });
 
         $("#decDown").off('click');
         $("#decDown").on('click', function (e) {
             e.preventDefault();
             e.stopImmediatePropagation();
-            model.d--;
-            model.decimal = 'd' + parseInt(model.d);
-            $divGrid.jqxGrid('refresh');
+            model.d = DataGrid.clampDecimals(model.d - 1);
+            RYC.grid.setDecimals(model.d);
         });
 
-        $("#showLog").click(function (e) {
+        $("#showLog").off('click');
+        $("#showLog").on('click', function (e) {
             e.preventDefault();
             $('#definition').html(`${DEF[model.group][model.param].definition}`);
             $('#definition').toggle('slow');
